@@ -1,0 +1,65 @@
+/* ---- Before/after sweep ---- */
+.wipe { position: relative; overflow: hidden; border-radius: var(--radius); background: var(--bg); line-height: 0; }
+.wipe canvas { display: block; width: 100%; height: auto; }
+.wipe .wipe-to { position: absolute; inset: 0; }
+.wipe-line { position: absolute; top: 0; bottom: 0; left: 0; width: 1px; background: #fff; box-shadow: 0 0 0 .5px rgba(0,0,0,.35); opacity: 0; }
+.wipe.play .wipe-to { animation: wipe-clip 3.2s cubic-bezier(.65,0,.35,1) infinite alternate; }
+.wipe.play .wipe-line { opacity: 1; animation: wipe-move 3.2s cubic-bezier(.65,0,.35,1) infinite alternate; }
+@keyframes wipe-clip { 0%, 12% { clip-path: inset(0 0 0 100%); } 88%, 100% { clip-path: inset(0 0 0 0); } }
+@keyframes wipe-move { 0%, 12% { left: 100%; } 88%, 100% { left: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .wipe.play .wipe-to { animation: none; clip-path: inset(0 0 0 50%); }
+  .wipe.play .wipe-line { animation: none; left: 50%; }
+}
+.wipe-tag { position: absolute; bottom: 8px; padding: 2px 6px; border-radius: 4px; background: rgba(0,0,0,.6); color: #fff; font-size: 11px; line-height: 16px; }
+.wipe-tag.from { left: 8px; }
+.wipe-tag.to { right: 8px; }
+
+/* ---- Hover card ---- */
+.peek { width: 232px; padding: 8px; border: 1px solid var(--float-line); border-radius: var(--radius-lg); background: var(--float); box-shadow: var(--shadow-float); pointer-events: none; }
+.peek-text { display: flex; flex-direction: column; gap: 2px; padding: 8px 4px 4px; font-size: 12px; line-height: 16px; }
+.peek-text strong { font-weight: 600; color: var(--text); }
+.peek-text span { color: var(--muted); }
+
+/* ---- Applied effects ---- */
+.fx-list { display: flex; flex-direction: column; gap: 4px; }
+.fx-head { display: flex; align-items: center; gap: 2px; min-height: 40px; padding-right: 2px; border-radius: var(--radius); }
+.fx-head:hover { background: var(--panel-2); }
+.fx-title { display: grid; grid-template-columns: 28px minmax(0, 1fr); column-gap: 8px; flex: 1; min-width: 0; padding: 4px; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.fx-thumb { grid-row: span 2; width: 28px; height: 28px; align-self: center; border-radius: 4px; }
+.fx-name { overflow: hidden; color: var(--text); font-size: 12px; font-weight: 500; line-height: 16px; text-overflow: ellipsis; white-space: nowrap; }
+.fx-summary { overflow: hidden; color: var(--muted); font-size: 11px; line-height: 14px; text-overflow: ellipsis; white-space: nowrap; }
+.fx.off .fx-thumb, .fx.off .fx-name, .fx.off .fx-summary { opacity: .45; }
+.fx-eye { opacity: 0; }
+.fx-head:hover .fx-eye, .fx-eye:focus-visible, .fx.off .fx-eye { opacity: 1; }
+.fx-settings { display: flex; flex-direction: column; gap: 8px; padding: 8px 0 12px; }
+.fx-colors { display: flex; align-items: center; gap: 16px; min-height: var(--h-control); }
+.fx-colors > :last-child { margin-left: auto; }
+.fx-color { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; cursor: pointer; }
+.fx-color .swatch { position: relative; display: block; flex: none; width: 20px; height: 20px; overflow: hidden; border-radius: 4px; background: var(--c); box-shadow: inset 0 0 0 1px rgba(255,255,255,.14); }
+.fx-color .swatch input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; padding: 0; border: 0; opacity: 0; cursor: pointer; }
+
+/* ---- Library ---- */
+.fx-library { width: 308px; border: 1px solid var(--float-line); border-radius: var(--radius-lg); background: var(--float); box-shadow: var(--shadow-float); overflow: hidden; }
+.fx-library-scroll { display: flex; flex-direction: column; gap: 16px; max-height: min(520px, 70vh); padding: 16px; overflow: auto; }
+.fx-library h3 { margin: 0 0 8px; color: var(--muted); font-size: 11px; font-weight: 600; }
+.fx-library-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 8px; }
+.look { display: flex; flex-direction: column; gap: 4px; padding: 0; border: 0; background: none; color: var(--text); font: inherit; font-size: 12px; line-height: 16px; text-align: left; cursor: pointer; }
+.look .wipe { box-shadow: 0 0 0 1px var(--border); }
+.look:hover .wipe, .look:focus-visible .wipe { box-shadow: 0 0 0 2px var(--accent); }
+.look:focus-visible { outline: none; }
+.fx-library-hint { min-height: 48px; padding: 8px 16px; border-top: 1px solid var(--border); color: var(--muted); font-size: 11px; line-height: 16px; }
+
+/* ---- Gradient ---- */
+.grad-pad { position: relative; border-radius: var(--radius); overflow: hidden; line-height: 0; box-shadow: inset 0 0 0 1px var(--border); }
+.grad-pad canvas { display: block; width: 100%; height: auto; }
+.grad-dot { position: absolute; width: 16px; height: 16px; margin: -8px 0 0 -8px; padding: 0; border: 2px solid #fff; border-radius: 50%; box-shadow: 0 1px 3px rgba(0,0,0,.45); cursor: grab; touch-action: none; }
+.grad-dot:active { cursor: grabbing; }
+.grad-dot.on { box-shadow: 0 0 0 2px var(--accent), 0 1px 3px rgba(0,0,0,.45); }
+.grad-presets { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 4px; }
+.grad-presets button { aspect-ratio: 1; padding: 0; border: 0; border-radius: 4px; background-size: cover; cursor: pointer; box-shadow: inset 0 0 0 1px rgba(255,255,255,.08); }
+.grad-presets button:hover, .grad-presets button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* ---- Collapsible section title ---- */
+.section-toggle { display: inline-flex; align-items: center; gap: 4px; margin-left: -2px; padding: 0; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; }
+.section-note { margin-left: 4px; color: var(--muted); font-size: 11px; font-weight: 400; }

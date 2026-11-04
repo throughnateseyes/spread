@@ -1,0 +1,54 @@
+/* Board (row) chrome on the canvas: letter, name, note, pick / reject, one actions menu. */
+.board-header { position: absolute; display: flex; align-items: center; gap: 8px; height: 24px; padding: 0; color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; z-index: 2; }
+.board-header .board-name { font-weight: 600; color: var(--text-2); cursor: default; overflow: hidden; text-overflow: ellipsis; max-width: 280px; flex: 0 0 auto; }
+.board-header.active .board-name { color: var(--text); }
+/* Emails sit side by side, so their headers stop before the next one and the name gives way first. */
+.board-header.beside .board-name { flex: 0 1 auto; min-width: 0; }
+/* Zoomed out, the name is what you compare by: everything else steps aside until you hover. */
+.board-header.tight .board-kind, .board-header.tight .board-meta { display: none; }
+.board-header.tight:not(:hover) .board-status button:not(.on), .board-header.tight:not(:hover) .board-more:not(.open) { display: none; }
+.board-header .board-kind { display: grid; place-items: center; color: var(--muted); flex: none; }
+.board-header.active .board-kind { color: var(--text); }
+.board-header .board-meta { color: var(--faint); flex: 0 100 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.board-header .board-note { color: var(--faint); overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1 1 0; cursor: default; }
+.board-header .board-spacer { flex: 1 1 auto; }
+.board-header .board-name-input,
+.board-header .board-note-input { background: var(--bg); border: 1px solid var(--accent); border-radius: var(--radius); padding: 0 4px; outline: none; height: 24px; color: var(--text); font: inherit; }
+.board-header .board-name-input { font-weight: 600; width: 224px; flex: none; }
+.board-header .board-note-input { flex: 1 1 auto; min-width: 120px; }
+
+/* Row letter chip: A, B, C… Green with a check when picked, struck through when rejected. */
+.board-header .board-letter { display: inline-flex; align-items: center; justify-content: center; gap: 2px; min-width: 20px; height: 20px; padding: 0 4px; border-radius: var(--radius); background: var(--chip); color: var(--text-2); font-size: 11px; font-weight: 700; flex: none; font-variant-numeric: tabular-nums; }
+.board-header.active .board-letter { background: var(--accent); color: var(--on-accent); }
+.board-header.picked .board-letter { background: var(--success); color: var(--on-accent); }
+.board-header.rejected .board-letter { background: transparent; color: var(--faint); box-shadow: inset 0 0 0 1px var(--border-strong); text-decoration: line-through; }
+
+/* Rejected rows: header muted (the canvas dims the row itself). Hover brings it back. */
+.board-header.rejected .board-name,
+.board-header.rejected .board-note { opacity: .5; transition: opacity var(--t); }
+.board-header.rejected:hover .board-name,
+.board-header.rejected:hover .board-note { opacity: .85; }
+
+.board-header .board-promote { display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 8px; border: none; border-radius: 10px; background: var(--success-soft); color: var(--success-text); font-size: 11px; font-weight: 600; flex: none; }
+.board-header .board-promote:hover { background: var(--success); color: var(--on-accent); }
+
+/* Pick / reject and the actions menu show on hover or on the active row; a set status always shows. */
+.board-header .board-status { display: flex; gap: 2px; flex: none; }
+.board-header .board-status button,
+.board-header .board-more { width: 24px; height: 24px; display: grid; place-items: center; border: none; border-radius: var(--radius); background: transparent; color: var(--muted); flex: none; opacity: 0; transition: opacity var(--t), background var(--t); }
+.board-header:hover .board-status button, .board-header.active .board-status button, .board-header .board-status button.on,
+.board-header:hover .board-more, .board-header.active .board-more, .board-header .board-more.open { opacity: 1; }
+.board-header .board-status button:hover,
+.board-header .board-more:hover, .board-header .board-more.open { background: var(--hover); color: var(--text); }
+.board-header .board-status .pick.on { background: var(--success); color: var(--on-accent); }
+.board-header .board-status .reject.on { background: var(--danger-soft); color: var(--danger-text); }
+
+.board-menu button.danger:hover:not(:disabled) { background: var(--danger); }
+
+/* Why a row was picked or rejected: a dashed "Why?" until answered, then the reason as a chip. */
+.board-header .board-reason { height: 20px; padding: 0 8px; border-radius: 10px; border: 1px dashed var(--border-strong); background: transparent; color: var(--muted); font-size: 11px; flex: none; max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
+.board-header .board-reason:hover, .board-header .board-reason.open { color: var(--text); border-color: var(--muted); }
+.board-header .board-reason.set { border-style: solid; border-color: transparent; font-weight: 600; }
+.board-header .board-reason.set.picked { background: var(--success-soft); color: var(--success-text); }
+.board-header .board-reason.set.rejected { background: var(--danger-soft); color: var(--danger-text); }
+.board-header .board-reason-input { flex: 0 0 200px; min-width: 120px; }

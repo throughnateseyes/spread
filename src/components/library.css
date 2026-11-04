@@ -1,0 +1,16 @@
+.lib-field { display: flex; flex-direction: column; gap: 8px; }
+.lib-field textarea { width: 100%; }
+.lib-grid { display: grid; grid-template-columns: 1fr; gap: 8px; max-height: 60vh; overflow: auto; }
+.lib-card { display: grid; grid-template-columns: 96px 1fr auto; gap: 16px; align-items: center; padding: 8px 12px 8px 8px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--panel-2); }
+.lib-meta { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.lib-meta strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lib-meta span { color: var(--muted); font-size: 11px; }
+.lib-meta p { margin: 4px 0 0; color: var(--muted); font-size: 11px; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.lib-actions { display: flex; align-items: center; gap: 4px; }
+.lib-thumb { width: 96px; height: 72px; border-radius: var(--radius); background: var(--bg); display: flex; align-items: center; justify-content: center; overflow: hidden; color: var(--muted); }
+.lib-thumb img { width: 100%; height: 100%; object-fit: cover; object-position: top left; }
+.lib-section { font-size: 11px; }
+.lib-note { display: flex; align-items: center; gap: 4px; }
+.nb-card .lib-thumb { width: 100%; height: 72px; }
+.nb-group { margin: 0 0 -8px; }
+.dock-menu .dock-group { padding: 8px 12px 4px; color: var(--muted); font-size: 11px; font-weight: 600; }

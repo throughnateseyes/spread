@@ -1,0 +1,112 @@
+{
+  "name": "spread",
+  "productName": "Spread",
+  "version": "0.1.0",
+  "description": "A free, local design canvas that Claude can drive: seamless carousels, emails and page layouts.",
+  "license": "MIT",
+  "author": "Nate Bautista",
+  "homepage": "https://github.com/throughnateseyes/spread",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/throughnateseyes/spread.git"
+  },
+  "bugs": "https://github.com/throughnateseyes/spread/issues",
+  "private": true,
+  "type": "module",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "dev": "concurrently -k -n vite,app -c blue,magenta \"vite\" \"wait-on tcp:5173 && cross-env SPREAD_DEV_URL=http://localhost:5173 electron .\"",
+    "web": "vite",
+    "build": "tsc -b && vite build",
+    "app": "npm run build && electron .",
+    "dist:win": "npm run build && npm run connector && electron-builder --win",
+    "dist:mac": "npm run build && npm run connector && electron-builder --mac",
+    "typecheck": "tsc -b",
+    "connector": "node scripts/build-connector.mjs",
+    "icon": "node scripts/build-icon.mjs"
+  },
+  "build": {
+    "appId": "com.spread.studio",
+    "productName": "Spread",
+    "icon": "assets/icon/icon.png",
+    "files": [
+      "dist/**",
+      "electron/**",
+      "assets/icon/icon.png",
+      "package.json"
+    ],
+    "fileAssociations": [
+      {
+        "ext": "spread",
+        "name": "Spread Project",
+        "role": "Editor"
+      }
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "icon": "assets/icon/icon.ico"
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "category": "public.app-category.graphics-design",
+      "icon": "assets/icon/icon.icns"
+    },
+    "linux": {
+      "icon": "assets/icon/icon.png"
+    },
+    "directories": {
+      "output": "release"
+    },
+    "extraResources": [
+      {
+        "from": "release/Spread.mcpb",
+        "to": "Spread.mcpb"
+      },
+      {
+        "from": "build/connector/server",
+        "to": "connector/server"
+      }
+    ]
+  },
+  "devDependencies": {
+    "@anthropic-ai/mcpb": "^2.1.2",
+    "@fontsource-variable/archivo": "^5.3.0",
+    "@fontsource-variable/dm-sans": "^5.3.0",
+    "@fontsource-variable/fraunces": "^5.3.0",
+    "@fontsource-variable/inter": "^5.3.0",
+    "@fontsource-variable/playfair-display": "^5.3.0",
+    "@fontsource-variable/space-grotesk": "^5.3.0",
+    "@fontsource/bebas-neue": "^5.3.0",
+    "@fontsource/dm-serif-display": "^5.3.0",
+    "@fontsource/instrument-serif": "^5.3.0",
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "@phosphor-icons/react": "^2.1.10",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "concurrently": "^10.0.6",
+    "cross-env": "^10.1.0",
+    "electron": "^45.0.0",
+    "electron-builder": "^26.18.0",
+    "fflate": "^0.8.3",
+    "heic-to": "^1.6.6",
+    "idb-keyval": "^6.3.0",
+    "immer": "^11.2.9",
+    "konva": "^10.9.0",
+    "nanoid": "^6.0.2",
+    "pdfjs-dist": "^5.7.284",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "react-konva": "^19.3.2",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.5",
+    "wait-on": "^9.5.1",
+    "zod": "^4.6.7",
+    "zustand": "^5.0.16"
+  }
+}

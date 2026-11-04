@@ -1,0 +1,375 @@
+// Document model. Everything in `Doc` is plain JSON so it can be saved, undone and autosaved.
+// Binary data (photos, font files) lives in the asset registry (assets.ts), keyed by asset id.
+
+export type Sizing = 'fixed' | 'hug' | 'fill';
+export type LayoutMode = 'none' | 'row' | 'column';
+
+export interface Shadow {
+  enabled: boolean;
+  color: string; // #RRGGBBAA
+  x: number;
+  y: number;
+  blur: number;
+}
+
+export type Paint =
+  | { kind: 'solid'; color: string } // #RRGGBB or #RRGGBBAA
+  | { kind: 'linear'; angle: number; from: string; to: string; grain?: number }
+  /** cx, cy: centre, 0..1 of the box. radius: 1 = the box's longer side. */
+  | { kind: 'radial'; cx: number; cy: number; radius: number; from: string; to: string; grain?: number }
+  /** Colours pinned to points (x, y 0..1) that melt together. softness 0..1: how far each colour spreads. */
+  | { kind: 'mesh'; points: MeshPoint[]; softness: number; grain?: number };
+
+export interface MeshPoint {
+  x: number;
+  y: number;
+  color: string;
+}
+
+interface BaseNode {
+  id: string;
+  /**
+   * Optional stable role name ("headline", "photo-3"). Unlike ids it survives board
+   * duplication, so Claude can address the same layer across every variation row.
+   */
+  key?: string;
+  name: string;
+  /** Position relative to the parent frame (or the strip for top-level nodes). Ignored inside auto layout. */
+  x: number;
+  y: number;
+  /** Stored size. Used when sizing is 'fixed'; 'hug' and 'fill' sizes are computed by layout.ts. */
+  w: number;
+  h: number;
+  rotation: number;
+  opacity: number;
+  visible: boolean;
+  locked: boolean;
+  sizingH: Sizing;
+  sizingV: Sizing;
+  shadow?: Shadow;
+}
+
+export interface ImageAdjust {
+  brightness: number; // -1..1, 0 = none
+  contrast: number; // -1..1
+  saturation: number; // -1..1
+}
+
+interface EffectBase {
+  id: string;
+  /** The name it was added under in the library ("Riso"). */
+  name?: string;
+  enabled: boolean;
+}
+
+/** The photo redrawn on a coarse grid of cells. `size` is the cell in layer px, so it looks the same at any zoom or export scale. */
+export interface DitherEffect extends EffectBase {
+  type: 'dither';
+  pattern: 'ordered' | 'diffusion' | 'noise';
+  size: number;
+  /** 'duotone' maps tone onto ink and paper; 'photo' keeps the photo's own colours, reduced to `levels`. */
+  mode: 'duotone' | 'photo';
+  ink: string;
+  paper: string;
+  /** Tones per channel, 2 = pure two colour. */
+  levels: number;
+}
+
+export interface GrainEffect extends EffectBase {
+  type: 'grain';
+  amount: number; // 0..1
+  size: number; // grain size in layer px
+}
+
+export interface BlurEffect extends EffectBase {
+  type: 'blur';
+  /** 'even' softens the whole photo; 'progressive' goes from sharp to soft. */
+  mode: 'even' | 'progressive';
+  amount: number; // radius in layer px
+  /** The side the blur grows towards. */
+  direction: 'top' | 'bottom' | 'left' | 'right';
+  /** Where the blur begins, 0..1 from the sharp side. */
+  start: number;
+}
+
+/** Effects run top to bottom, after crop and adjustments. The photo itself is never changed. */
+export type PhotoEffect = DitherEffect | GrainEffect | BlurEffect;
+
+export interface ImageNode extends BaseNode {
+  type: 'image';
+  assetId: string | null; // null = empty photo placeholder
+  fit: 'fill' | 'fit';
+  /** Crop for 'fill': zoom >= 1 on top of cover scale; cx/cy = focal centre in normalised source coords. */
+  crop: { zoom: number; cx: number; cy: number };
+  radius: number;
+  flipX: boolean;
+  flipY: boolean;
+  adjust: ImageAdjust;
+  effects?: PhotoEffect[];
+  stroke: string | null;
+  strokeWidth: number;
+}
+
+export interface TextNode extends BaseNode {
+  type: 'text';
+  text: string;
+  fontFamily: string;
+  fontWeight: number;
+  italic: boolean;
+  fontSize: number;
+  lineHeight: number; // multiplier, e.g. 1.2
+  letterSpacing: number; // percent of font size, Figma-style
+  align: 'left' | 'center' | 'right' | 'justify';
+  fill: string;
+  uppercase: boolean;
+  decoration: 'none' | 'underline' | 'line-through';
+}
+
+export interface ShapeNode extends BaseNode {
+  type: 'rect' | 'ellipse';
+  fill: Paint;
+  stroke: string | null;
+  strokeWidth: number;
+  radius: number;
+  /** Blurs whatever sits behind the layer, in layer px. Shows through a see-through fill. */
+  backdropBlur?: number;
+}
+
+export interface FrameNode extends BaseNode {
+  type: 'frame';
+  fill: Paint | null;
+  stroke: string | null;
+  strokeWidth: number;
+  radius: number;
+  /** Blurs whatever sits behind the frame, in layer px. Shows through a see-through fill. */
+  backdropBlur?: number;
+  clip: boolean;
+  layout: LayoutMode;
+  gap: number;
+  padding: { t: number; r: number; b: number; l: number };
+  /** Cross-axis alignment of children. */
+  alignItems: 'start' | 'center' | 'end';
+  /** Main-axis distribution of children. */
+  justify: 'start' | 'center' | 'end' | 'between';
+  children: SceneNode[];
+}
+
+export type SceneNode = ImageNode | TextNode | ShapeNode | FrameNode;
+export type NodeType = SceneNode['type'];
+
+export interface AssetMeta {
+  id: string;
+  name: string;
+  kind: 'image' | 'font';
+  mime: string;
+  width: number; // pixels for images, 0 for fonts
+  height: number;
+  /** For fonts: the CSS family name it is registered under. */
+  family?: string;
+}
+
+export interface GridAxis {
+  count: number; // 0 = off
+  gutter: number;
+  margin: number;
+}
+
+export interface LayoutGrid {
+  visible: boolean;
+  columns: GridAxis;
+  rows: GridAxis;
+  color: string; // #RRGGBBAA
+}
+
+export interface Slide {
+  id: string;
+  /** null = use doc.background */
+  background: string | null;
+}
+
+export type BoardKind = 'carousel' | 'email' | 'document';
+
+/**
+ * Print setup for document boards. Document units are PostScript points (72 per inch), so a
+ * Letter page is 612×792 and fontSize 10 is 10pt. Slides are pages and never bleed into each other.
+ */
+export interface PageSetup {
+  /** 'pt' for print (72 per inch, PDF page = W/72 in), 'px' for screen (exports 1:1 at 1x). */
+  units: 'pt' | 'px';
+  margins: { t: number; r: number; b: number; l: number };
+  /** Baseline grid step in pt (0 = off). Text tops and spacing should land on multiples of it. */
+  baseline: number;
+}
+
+/**
+ * A board is one design: a carousel strip of slides, or an email. A project holds several
+ * boards stacked as rows on one canvas (e.g. five variations of the same carousel).
+ * (Historically named Doc — "doc" in the store is always the active board.)
+ */
+export interface Doc {
+  version: 1;
+  id: string;
+  kind: BoardKind;
+  name: string;
+  /** Free-form note shown under the board header — Claude uses it to explain a variation. */
+  note?: string;
+  /** Email boards: height follows the content (bottom of the lowest top-level node). */
+  autoHeight?: boolean;
+  /** Document boards: margins and baseline grid, in pt. */
+  page?: PageSetup;
+  /** The user's verdict on a variation row. */
+  status?: 'picked' | 'rejected' | null;
+  /** Why, in a few words ("Too busy", "Love the type"). Claude turns repeated reasons into brand rules. */
+  statusReason?: string | null;
+  /** Email boards: the inbox lines that travel with the HTML (subject is also the HTML <title>). */
+  email?: EmailMeta;
+  slideWidth: number;
+  slideHeight: number;
+  slides: Slide[];
+  background: string;
+  grid: LayoutGrid;
+  /** Top-level nodes, bottom-most first. Coordinates span the whole strip: slide i covers x ∈ [i*W, (i+1)*W). */
+  nodes: SceneNode[];
+  assets: Record<string, AssetMeta>;
+  /** Order of photos in the Photos tray. */
+  assetOrder: string[];
+}
+
+export type Board = Doc;
+
+export interface EmailMeta {
+  subject?: string;
+  /** The preview line inboxes show after the subject. */
+  preheader?: string;
+}
+
+export interface Project {
+  version: 2;
+  name: string;
+  boards: Doc[];
+  activeBoardId: string;
+  /** The brand this project is designed in (from the brand library), or none: a personal project. */
+  brandId?: string | null;
+}
+
+// ---------- brands ----------
+
+/**
+ * A brand kit: the design system a project can be switched into. Brands live in a library on this
+ * computer (~/.spread/brands/<id>/brand.json, fonts beside it), not inside projects, so the same kit
+ * serves every project that picks it and a personal project simply picks none. A saved .spread file
+ * carries a copy so it still opens on-brand on another machine.
+ */
+export interface BrandColor {
+  name: string;
+  /** '#RRGGBB'. */
+  hex: string;
+  /** What it's for: ink, paper, accent, support, muted… Claude uses roles, not just hexes. */
+  role?: string;
+}
+
+export interface BrandFont {
+  /** The family as Spread knows it (bundled, uploaded, system or installed). */
+  family: string;
+  /** display, text, mono… */
+  role?: string;
+  /** Font files in the brand folder (fonts/<file>), registered when a project uses the brand. */
+  files?: string[];
+}
+
+export interface BrandRule {
+  id: string;
+  kind: 'do' | 'dont';
+  text: string;
+  /** brand: from the brand's own guidelines; learned: from the user's picks, rejects and hand edits. */
+  source: 'brand' | 'learned';
+  addedAt: number;
+}
+
+export interface Brand {
+  version: 1;
+  id: string;
+  name: string;
+  /** One or two sentences: who the brand is and how it should feel. */
+  description?: string;
+  colors: BrandColor[];
+  fonts: BrandFont[];
+  /** Allowed font sizes, per unit (px for screens and carousels, pt for print). */
+  typeScale?: { px?: number[]; pt?: number[] };
+  /** Base spacing unit; gaps and padding should be multiples of it. */
+  spacing?: { px?: number; pt?: number };
+  /** How the copy sounds. */
+  voice?: string;
+  rules: BrandRule[];
+  /** A long-form design doc (DESIGN.md) on this computer: the brand's full guidelines, read by Claude before designing. */
+  designDoc?: string;
+  /** Where it was imported from (a file path or a Claude design system link). */
+  source?: string;
+  updatedAt: number;
+}
+
+export interface Box {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+export type Tool = 'move' | 'hand' | 'frame' | 'rect' | 'ellipse' | 'text' | 'image' | 'comment';
+
+/** waiting: sent, Claude hasn't read it. working: Claude's on it. stopped: it ended before Claude finished. */
+export type CommentStatus = 'waiting' | 'working' | 'done' | 'stopped';
+
+/** A note pinned to a layer or a spot on a board, for Claude. Kept beside the project (see comments.ts). */
+export interface CanvasComment {
+  id: string;
+  /** The number on the pin, unique in the project. */
+  n: number;
+  boardId: string;
+  /** The layer it's on, if any. The key finds the layer again if Claude rebuilds it. */
+  nodeId: string | null;
+  nodeKey: string | null;
+  /** Where on the layer, as a fraction of its box, so the pin follows the layer. */
+  fx: number;
+  fy: number;
+  /** Where it was dropped, in strip space: the pin's spot when there's no layer. */
+  x: number;
+  y: number;
+  text: string;
+  status: CommentStatus;
+  at: number;
+}
+
+export const FORMAT_PRESETS: { id: string; label: string; w: number; h: number }[] = [
+  { id: 'portrait', label: 'Portrait 4:5', w: 1080, h: 1350 },
+  { id: 'tall', label: 'Tall 3:4', w: 1080, h: 1440 },
+  { id: 'square', label: 'Square 1:1', w: 1080, h: 1080 },
+  { id: 'story', label: 'Story 9:16', w: 1080, h: 1920 },
+  { id: 'landscape', label: 'Landscape 1.91:1', w: 1080, h: 566 },
+];
+
+/**
+ * Page sizes for document boards, for any medium. Print sizes are in points (72 per inch); screen
+ * sizes are in px (a board unit exports as one pixel at 1x). Swap w and h for landscape.
+ */
+export const PAGE_PRESETS: { id: string; group: 'Print' | 'Screen'; label: string; w: number; h: number; size: string }[] = [
+  { id: 'letter', group: 'Print', label: 'Letter', w: 612, h: 792, size: '8.5 × 11 in' },
+  { id: 'legal', group: 'Print', label: 'Legal', w: 612, h: 1008, size: '8.5 × 14 in' },
+  { id: 'tabloid', group: 'Print', label: 'Tabloid', w: 792, h: 1224, size: '11 × 17 in' },
+  { id: 'a5', group: 'Print', label: 'A5', w: 420, h: 595, size: '148 × 210 mm' },
+  { id: 'a4', group: 'Print', label: 'A4', w: 595, h: 842, size: '210 × 297 mm' },
+  { id: 'a3', group: 'Print', label: 'A3', w: 842, h: 1191, size: '297 × 420 mm' },
+  { id: 'poster-18x24', group: 'Print', label: 'Poster', w: 1296, h: 1728, size: '18 × 24 in' },
+  { id: 'poster-24x36', group: 'Print', label: 'Poster', w: 1728, h: 2592, size: '24 × 36 in' },
+  { id: 'business-card', group: 'Print', label: 'Business card', w: 252, h: 144, size: '3.5 × 2 in' },
+  { id: 'presentation', group: 'Screen', label: 'Presentation 16:9', w: 1920, h: 1080, size: '1920 × 1080 px' },
+  { id: 'instagram-post', group: 'Screen', label: 'Instagram post', w: 1080, h: 1350, size: '1080 × 1350 px' },
+  { id: 'story', group: 'Screen', label: 'Story / Reel cover', w: 1080, h: 1920, size: '1080 × 1920 px' },
+  { id: 'linkedin-post', group: 'Screen', label: 'LinkedIn post', w: 1200, h: 1200, size: '1200 × 1200 px' },
+  { id: 'linkedin-banner', group: 'Screen', label: 'LinkedIn banner', w: 1584, h: 396, size: '1584 × 396 px' },
+  { id: 'x-header', group: 'Screen', label: 'X header', w: 1500, h: 500, size: '1500 × 500 px' },
+  { id: 'youtube-thumbnail', group: 'Screen', label: 'YouTube thumbnail', w: 1280, h: 720, size: '1280 × 720 px' },
+];
+
+/** Print presets use points; everything else on a document board is treated as px. */
+export const isPrintSize = (w: number, h: number) => PAGE_PRESETS.some((p) => p.group === 'Print' && ((p.w === w && p.h === h) || (p.w === h && p.h === w)));

@@ -1,0 +1,30 @@
+/* Slide numbers under each slide. Slide actions are in the canvas right-click menu. */
+.slide-header { position: absolute; display: flex; align-items: center; height: 16px; pointer-events: none; color: var(--faint); font-size: 11px; font-weight: 500; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; }
+.slide-header .slide-label { pointer-events: auto; cursor: default; transition: color var(--t); }
+.slide-header .slide-label:hover { color: var(--muted); }
+
+.add-slide { position: absolute; width: 48px; border: 1px dashed var(--border-strong); border-radius: var(--radius-lg); background: transparent; color: var(--faint); display: grid; place-items: center; }
+.add-slide:hover, .add-section:hover { border-color: var(--accent); color: var(--accent-text); background: var(--accent-faint); }
+/* Carousels grow sideways (+ at the end of the strip); emails grow down (this bar under the column). */
+.add-section { position: absolute; display: flex; align-items: center; justify-content: center; gap: 8px; height: 40px; overflow: hidden; border: 1px dashed var(--border-strong); border-radius: var(--radius-lg); background: transparent; color: var(--muted); font-weight: 500; white-space: nowrap; }
+
+/* Rendered through <Floating> (position: fixed, portal) so panels never clip it. */
+.size-badge { background: var(--accent); color: var(--on-accent); font-size: 11px; line-height: 16px; font-weight: 600; font-variant-numeric: tabular-nums; padding: 0 4px; border-radius: 2px; pointer-events: none; white-space: nowrap; }
+.slot-pill { background: var(--accent); color: var(--on-accent); font-size: 11px; line-height: 16px; font-weight: 600; padding: 4px 8px; border-radius: 999px; white-space: nowrap; box-shadow: var(--shadow-float); }
+
+.text-editor { position: absolute; margin: 0; padding: 0; border: none; outline: 1px solid var(--accent); background: transparent; resize: none; overflow: hidden; z-index: 5; user-select: text; }
+
+
+.shortcuts { display: grid; grid-template-columns: 1fr; gap: 4px; }
+.shortcut-row { display: grid; grid-template-columns: 224px 1fr; gap: 12px; align-items: center; padding: 4px 0; border-bottom: 1px solid var(--border); }
+.shortcut-row kbd { font: 11px/1.4 ui-monospace, Consolas, monospace; color: var(--text); background: var(--panel-2); padding: 0 4px; border-radius: var(--radius); justify-self: start; }
+.shortcut-row span { color: var(--muted); }
+
+.crop-hud { display: flex; align-items: center; gap: 4px; background: var(--float); border: 1px solid var(--float-line); border-radius: var(--radius-lg); padding: 4px; box-shadow: var(--shadow-float); z-index: 6; white-space: nowrap; }
+.crop-hud button { height: var(--h-control); min-width: var(--h-control); display: inline-flex; align-items: center; justify-content: center; gap: 4px; border: none; border-radius: var(--radius); background: transparent; color: var(--text); padding: 0 8px; }
+.crop-hud button:hover { background: var(--hover); }
+.crop-hud input[type=range] { width: 140px; accent-color: var(--accent); }
+.crop-hud .crop-pct { width: 44px; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
+.crop-hud .crop-sep { width: 1px; height: 16px; background: var(--float-line); margin: 0 4px; }
+.crop-hud .crop-done { background: var(--accent); color: var(--on-accent); font-weight: 600; }
+.crop-hud .crop-done:hover { background: var(--accent-2); }

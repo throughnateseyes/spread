@@ -1,0 +1,27 @@
+.canvas-dock { position: fixed; bottom: 16px; left: calc(260px + (100vw - 540px - var(--chat-open, 0px)) / 2); transform: translateX(-50%); display: flex; gap: 2px; padding: 4px; background: var(--float); border: 1px solid var(--float-line); border-radius: var(--radius-xl); box-shadow: var(--shadow-float); z-index: 20; }
+.canvas-dock button { display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px; border: none; border-radius: var(--radius-lg); background: transparent; color: var(--text); font-weight: 500; }
+.canvas-dock button:hover, .canvas-dock button.on { background: var(--hover); }
+.canvas-dock .dock-sep { align-self: center; width: 1px; height: 16px; margin: 0 4px; background: var(--float-line); }
+.canvas-dock .dock-key { padding: 0 8px; color: var(--muted); }
+.canvas-dock .dock-key:hover, .canvas-dock .dock-key.on { color: var(--text); }
+.keycap { display: grid; place-items: center; width: 20px; height: 20px; border-radius: var(--radius); background: var(--raised); color: var(--text); font-size: 11px; font-weight: 600; box-shadow: inset 0 0 0 1px var(--hairline-strong), 0 1px 0 var(--border-strong); transition: transform var(--t) var(--ease), box-shadow var(--t) var(--ease); }
+.dock-key:hover .keycap, .dock-key.on .keycap { transform: translateY(1px); box-shadow: inset 0 0 0 1px var(--hairline-strong); }
+.dock-menu-wrap { position: relative; }
+.dock-menu { position: absolute; bottom: 40px; left: 50%; transform: translateX(-50%); width: 300px; max-height: 60vh; overflow: auto; background: var(--float); border: 1px solid var(--float-line); border-radius: var(--radius-lg); padding: 4px; box-shadow: var(--shadow-float); }
+.dock-menu button { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; height: auto; width: 100%; padding: 8px 12px; text-align: left; }
+.dock-menu button span { color: var(--muted); font-size: 11px; font-weight: 400; }
+.nb-kinds { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.nb-kind { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; min-width: 0; padding: 12px; text-align: left; border: 1px solid var(--border); border-radius: var(--radius-lg); background: transparent; color: var(--text); transition: border-color var(--t) var(--ease), background-color var(--t) var(--ease); }
+.nb-kind:hover { border-color: var(--border-strong); }
+.nb-kind.on { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); background: var(--accent-faint); }
+.nb-kind:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.nb-kind strong { margin-top: 8px; font-weight: 600; }
+.nb-kind span { color: var(--muted); font-size: 11px; line-height: 1.4; }
+.nb-art { display: block; width: 100%; height: 64px; color: var(--faint); }
+.nb-kind.on .nb-art { color: var(--accent-text); }
+.nb-templates { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.nb-card { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; text-align: left; padding: 12px; border-radius: var(--radius-lg); border: 1px solid var(--border); background: var(--panel-2); }
+.nb-card:last-child:nth-child(odd) { grid-column: 1 / -1; }
+.nb-card span { color: var(--muted); font-size: 11px; line-height: 1.4; }
+.nb-card:hover { border-color: var(--border-strong); }
+.nb-card.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }

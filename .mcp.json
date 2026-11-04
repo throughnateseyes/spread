@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "spread": {
+      "command": "node",
+      "args": ["mcp/server.mjs"]
+    }
+  }
+}

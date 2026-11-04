@@ -1,0 +1,41 @@
+/* Comment pins. They sit on the user's design, which can be any colour in either theme, so a pin
+   carries its own solid fill and white rim instead of the UI's surface tokens. The tip is the corner
+   at the bottom left, and that's the point the note is about. */
+.comment-pin { position: absolute; left: 0; top: 0; width: 28px; height: 28px; padding: 0; border: none; background: none; border-radius: 0; z-index: 3; cursor: pointer; }
+.comment-pin-face { display: grid; place-items: center; width: 28px; height: 28px; box-sizing: border-box; border: 2px solid #fff; border-radius: 50% 50% 50% 2px; background: var(--pin); color: var(--pin-ink, #fff); font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35); transition: transform var(--t) var(--ease); transform-origin: 0 100%; }
+.comment-pin:hover .comment-pin-face, .comment-pin.open .comment-pin-face { transform: scale(1.12); }
+.comment-pin:focus-visible { outline: none; }
+.comment-pin:focus-visible .comment-pin-face { box-shadow: 0 0 0 2px var(--accent); }
+.comment-pin.draft { --pin: var(--accent); pointer-events: none; }
+.comment-pin.waiting { --pin: #f0ab45; --pin-ink: #2a1c00; }
+.comment-pin.working { --pin: var(--accent); }
+.comment-pin.done { --pin: var(--success); }
+.comment-pin.stopped { --pin: var(--danger); }
+
+/* Being worked on: a ring turns around the pin, so it reads at a glance across a whole row. */
+.comment-pin.working::after { content: ''; position: absolute; inset: -4px; border: 2px solid transparent; border-top-color: var(--accent); border-right-color: var(--accent); border-radius: 50%; animation: comment-spin 1s linear infinite; pointer-events: none; }
+@keyframes comment-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .comment-pin.working::after { animation: none; border-color: var(--accent); }
+}
+
+/* Rendered through <Floating>, so panels never clip it. */
+.comment-pop { width: 280px; padding: 8px; background: var(--float); border: 1px solid var(--float-line); border-radius: var(--radius-lg); box-shadow: var(--shadow-float); color: var(--text); font-size: 12px; line-height: 16px; cursor: default; }
+.comment-on { padding: 0 4px; color: var(--muted); font-size: 11px; line-height: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.comment-box { display: flex; align-items: flex-end; gap: 4px; margin-top: 4px; }
+.comment-input { flex: 1; min-width: 0; min-height: 28px; max-height: 160px; margin-top: 4px; padding: 6px 8px; box-sizing: border-box; resize: none; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); color: var(--text); font: inherit; user-select: text; }
+.comment-box .comment-input { margin-top: 0; }
+.comment-input:focus { outline: none; border-color: var(--accent); }
+.comment-input::placeholder { color: var(--faint); }
+.comment-input + .chat-send { flex: none; }
+.comment-pop > .comment-input { display: block; width: 100%; }
+.comment-text { margin-top: 4px; padding: 0 4px; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 200px; overflow: auto; user-select: text; }
+.comment-status { display: flex; align-items: center; gap: 6px; padding: 0 4px 4px; font-weight: 600; }
+.comment-status.waiting { color: var(--warn); }
+.comment-status.working { color: var(--accent-text); }
+.comment-status.done { color: var(--success-text); }
+.comment-status.stopped { color: var(--danger-text); }
+.comment-dot { width: 8px; height: 8px; margin: 0 2px; border-radius: 50%; background: currentColor; }
+.comment-actions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+
+.chat-queued-note { display: inline-flex; vertical-align: -2px; margin-right: 4px; color: var(--muted); }
