@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld('spreadNative', {
   writeFile: (opts) => ipcRenderer.invoke('write-file', opts),
   openFile: (opts) => ipcRenderer.invoke('open-file', opts),
   readFile: (path) => ipcRenderer.invoke('read-file', path),
+  fetchImage: (url) => ipcRenderer.invoke('fetch-image', url),
   pickDirectory: (opts) => ipcRenderer.invoke('pick-directory', opts),
   listDir: (dir) => ipcRenderer.invoke('list-dir', dir),
   makeDir: (opts) => ipcRenderer.invoke('make-dir', opts),

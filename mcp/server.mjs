@@ -277,6 +277,27 @@ tool(
 );
 
 tool(
+  'spread_repeat',
+  {
+    title: 'Repeat a card from a table',
+    description: "Fills a grid from data: build ONE card, then pass rows instead of building each card by hand. Pass the card's id or key. It stays as the first card, wrapped in a repeat frame in the same spot. Without fields, every text and photo in the card changes per card, each named after its layer's key or name. To choose, pass fields { field: layer key or id } for text and photos and links { field: layer key or id } for links, and write {{field}} inside any text or link in the card, like '{{beds}} bed · {{baths}} bath', to build a line from several fields, and in a photo's layer name for alt text per card ('Photo [alt:{{unit}} living room]'). Layers with no field stay the same on every card. rows: [{ field: value }], one per card, replacing the table; a field left out of a row keeps the first row's value. Photo values can be a photo id or name, a web link or a file path; Spread downloads them. Call again on the repeat frame or any card to change rows, columns or gap, or with stop: true to keep the cards as plain layers. After that, change the design with spread_update_nodes on any card: style changes reach every card, a value change goes to that card's row. get_state detail 'outline' shows a repeat as one card plus its fields. Returns { id, cardId, fields, columns, cards, failed }, where failed lists photos that couldn't be fetched.",
+    inputSchema: {
+      boardId,
+      id: z.string().optional(),
+      key: z.string().optional(),
+      columns: z.number().int().min(1).max(6).optional().describe('Cards per line (default 1).'),
+      gap: z.number().optional().describe('Space between cards, both ways (default 16).'),
+      fields: z.record(z.string()).optional(),
+      links: z.record(z.string()).optional(),
+      rows: z.array(z.record(z.any())).optional(),
+      stop: z.boolean().optional(),
+    },
+    annotations: { openWorldHint: true }, // photo values can be web links
+  },
+  passthrough('repeat'),
+);
+
+tool(
   'spread_wrap_nodes',
   {
     title: 'Wrap layers in a frame',
@@ -643,7 +664,7 @@ tool(
 // Email boards (e-blasts)
 // ---------------------------------------------------------------------------
 
-const EMAIL = `EMAIL BOARDS: kind 'email', 600px wide, height grows with content. One root auto-layout column frame whose children are sections (frames named "Section / …"). Edit with the normal node tools (spread_update_nodes by id/key; spread_add_nodes with parentId = a section or the root). Facts in template copy are {{TOKENS}} — replace every one with real values (export warns about leftovers). Set a layer's link with the link prop on spread_add_nodes / spread_update_nodes, and check them all with spread_list_links. Tracking tags for every link go on the board (spread_update_board tracking). Older [link:URL] name tags still work; setting link replaces them. Layer-name tags the compiler reads: [alt:…] (image alt text), [button], [stack]/[nostack] (row frames stack on phones or not), [raster] (flatten to a picture). Images must be on public URLs: export with host: 'wordpress' when the user has connected WordPress (Spread uploads them and fills in the URLs); otherwise export once, the user uploads the image folder, then re-export with baseUrl. The board carries the subject and preview text (spread_update_board subject/preheader); export uses them.`;
+const EMAIL = `EMAIL BOARDS: kind 'email', 600px wide, height grows with content. One root auto-layout column frame whose children are sections (frames named "Section / …"). Edit with the normal node tools (spread_update_nodes by id/key; spread_add_nodes with parentId = a section or the root). Facts in template copy are {{TOKENS}} — replace every one with real values (export warns about leftovers). For grids of similar cards (listings, events), build one card and fill the rest with spread_repeat. Set a layer's link with the link prop on spread_add_nodes / spread_update_nodes, and check them all with spread_list_links. Tracking tags for every link go on the board (spread_update_board tracking). Older [link:URL] name tags still work; setting link replaces them. Layer-name tags the compiler reads: [alt:…] (image alt text), [button], [stack]/[nostack] (row frames stack on phones or not), [raster] (flatten to a picture). Images must be on public URLs: export with host: 'wordpress' when the user has connected WordPress (Spread uploads them and fills in the URLs); otherwise export once, the user uploads the image folder, then re-export with baseUrl. The board carries the subject and preview text (spread_update_board subject/preheader); export uses them.`;
 
 const emailOpts = {
   baseUrl: z.string().optional().describe('Public folder URL the exported images will live at; image src = baseUrl + file name.'),

@@ -1,3 +1,4 @@
+import { RepeatSection } from './RepeatDialog';
 import { useMemo, useState, type ReactNode } from 'react';
 import { MOD, useLayout, useStore } from '../store';
 import { absoluteBox, inAutoLayout, type LayoutMap } from '../layout';
@@ -469,6 +470,7 @@ function SelectionPanel({ sel }: { sel: SceneNode[] }) {
           </>
         }
       />
+      {single && <RepeatSection node={single} />}
       <AlignSection geo={geo} doc={doc} />
       <LayoutSection geo={geo} upd={upd} />
       {type === 'text' && <TextSection sel={sel as TextNode[]} upd={upd} doc={doc} />}

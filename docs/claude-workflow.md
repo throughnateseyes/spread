@@ -152,3 +152,7 @@ In WordPress, open **Users → Profile → Application Passwords**, name one "Sp
 - **Spread menu → Library…** lists both, with Show in Finder and Delete. They live in `~/.spread/templates` and `~/.spread/references`.
 
 Edit the email on the canvas like any other row. To change a link by hand, select the layer and use the Link section in the right panel; with nothing selected, the same panel lists every link on the email and takes tracking tags for all of them. To change alt text, rename the layer: the `[alt:…]` tag in its name is what the export reads.
+
+For a grid of similar cards, like the units in a monthly blast, build one card, select it and click **Repeat this card** in the right panel. Each text and photo becomes a column in a table, and each row is a card. Paste rows from a spreadsheet, with their column names on the first line to match by name. Photo cells take web links, so a column of image URLs works. Or give Claude the listing links and ask it to fill the grid; it uses `spread_repeat`.
+
+Edit any card on the canvas. A style change reaches every card, and a change to a value only changes that card's row. Turn off **Changes per card** on a layer to give every card the same text or photo. Write `{{field}}` in a text or link to build it from several columns, such as `{{beds}} bed · {{baths}} bath`, and in a photo's layer name for alt text per card: `Photo [alt:{{unit}} living room]`. Delete a card to remove its row. **Stop repeating** keeps the cards as plain layers.

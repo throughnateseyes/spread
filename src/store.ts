@@ -5,6 +5,7 @@ import type { CommentDraft } from './comments';
 import { cloneBoard, cloneWithNewIds, collectAssetIds, deepClone, findNode, locate, makeDoc, makeFrame, makeProject, pathTo, removeNodes, uid, walk } from './tree';
 import { absoluteBox, contentBottom, getLayout } from './layout';
 import { removeAsset } from './assets';
+import { syncRepeats } from './repeat';
 
 // Single app store. The project (several boards stacked as rows) is immutable (immer).
 // `doc` is always the ACTIVE board — most code only ever touches that. Every edit goes
@@ -71,7 +72,7 @@ interface State {
   dirty: boolean;
   toasts: Toast[];
   /** Modal currently open. */
-  modal: null | 'export' | 'preview' | 'arrange' | 'shortcuts' | 'new-board' | 'claude' | 'brands' | 'library';
+  modal: null | 'export' | 'preview' | 'arrange' | 'shortcuts' | 'new-board' | 'claude' | 'brands' | 'library' | 'repeat';
   leftTab: 'layers' | 'photos';
   /** The Home screen covers the editor (desktop app). */
   homeOpen: boolean;
@@ -160,7 +161,8 @@ export const useStore = create<State>((set, get) => {
   const commit = (next: Project, key?: string) => {
     const s = get();
     if (next === s.project) return;
-    next = syncAutoHeight(next, s.fontsVersion);
+    const repeats = syncRepeats(next, s.project);
+    next = syncAutoHeight(repeats.project, s.fontsVersion);
     const now = Date.now();
     // Keys starting with "g:" name one gesture (a drag, a scrub): merge it however slow it is.
     // Other keys merge only when repeated within COALESCE_MS (nudges, typing).
@@ -189,7 +191,10 @@ export const useStore = create<State>((set, get) => {
       lastKeyAt: now,
       dirty: true,
       editLog,
+      // A repeat can drop cards, so the selection may point at layers that are gone.
+      ...(repeats.changed ? { selection: validSel(activeOf(next), s.selection) } : {}),
     });
+    for (const note of repeats.notes) get().toast(note);
   };
   return {
   project: initialProject,

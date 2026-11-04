@@ -102,6 +102,7 @@ export interface SpreadNative {
   writeFile(opts: { path: string; data: Uint8Array }): Promise<string>;
   openFile(opts: { filters?: { name: string; extensions: string[] }[] }): Promise<NativeFile | null>;
   readFile(path: string): Promise<NativeFile>;
+  fetchImage(url: string): Promise<{ data: Uint8Array; type: string }>;
   pickDirectory(opts: { defaultPath?: string }): Promise<string | null>;
   /** One folder's subfolders, plus shortcuts (Desktop, Downloads…), for Spread's own folder browser. */
   listDir(dir?: string | null): Promise<{ dir: string; parent: string | null; entries: { name: string; path: string }[]; places: { label: string; path: string }[]; error: string | null }>;
@@ -179,6 +180,14 @@ export function listFiles(paths: string[], exts?: string[]): Promise<string[]> {
 }
 
 /** Reads a file from disk. Electron only. */
+/** Downloads a photo. In the browser this only works for sites that allow it (CORS). */
+export async function fetchImage(url: string): Promise<{ data: Uint8Array; type: string }> {
+  if (native) return native.fetchImage(url);
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`The server answered ${res.status}.`);
+  return { data: new Uint8Array(await res.arrayBuffer()), type: res.headers.get('content-type') || 'image/jpeg' };
+}
+
 export function readFile(path: string): Promise<NativeFile> {
   return requireNative('Reading files').readFile(path);
 }

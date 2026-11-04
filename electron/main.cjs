@@ -183,6 +183,19 @@ ipcMain.handle('open-file', async (_e, { filters } = {}) => {
 
 ipcMain.handle('read-file', async (_e, p) => readFile(p));
 
+// A photo from the web, for table cells that hold a link. The main process isn't held back by CORS.
+const MAX_IMAGE_BYTES = 40 * 1024 * 1024;
+ipcMain.handle('fetch-image', async (_e, url) => {
+  if (!/^https?:$/.test(new URL(url).protocol)) throw new Error('Only web links can be downloaded.');
+  const res = await fetch(url, { signal: AbortSignal.timeout(30000) });
+  if (!res.ok) throw new Error(`The server answered ${res.status}.`);
+  const type = res.headers.get('content-type') || '';
+  if (!type.startsWith('image/')) throw new Error('That link is not an image.');
+  const data = new Uint8Array(await res.arrayBuffer());
+  if (data.length > MAX_IMAGE_BYTES) throw new Error('That image is too large.');
+  return { data, type };
+});
+
 ipcMain.handle('pick-directory', async (_e, { defaultPath } = {}) => {
   const opts = { properties: ['openDirectory', 'createDirectory'] };
   if (defaultPath && fs.existsSync(defaultPath)) opts.defaultPath = defaultPath;

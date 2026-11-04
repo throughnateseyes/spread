@@ -370,7 +370,9 @@ class Compiler {
       tds.push(spacer(gap, i === 0 || f.justify === 'between' || Math.abs(gap - f.gap) > 1));
       if (i > 0) pendingGap = r(gap);
       const classes: string[] = [];
-      if (stack) {
+      // An empty cell only holds a row's shape, like the end of a half-full grid. Phones skip it.
+      if (stack && c.type === 'frame' && !c.children.length && !c.fill) classes.push('es-spc');
+      else if (stack) {
         classes.push('es-col');
         if (i > 0 && pendingGap > 0) {
           classes.push(`es-gt${pendingGap}`);

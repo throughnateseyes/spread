@@ -11,6 +11,8 @@ import { applyArrange, arrangeBoxes, ARRANGE_MODES, type ArrangeMode } from './a
 import { exportSlides, renderBoardStripBase64, renderSlidesBase64 } from './exporter';
 import { exportPdf } from './pdf';
 import { lintBoard } from './lint';
+import { photoCell } from './importer';
+import { fieldNamed, photoFields, repeatHost, setRows, startRepeat, stopRepeat } from './repeat';
 import { activeBrand, brandById, normalizeBrand, saveBrand, setProjectBrand, slugify, useBrands } from './brand';
 import { clearAutosave, loadProjectBytes, safeFileName, serializeProject } from './project';
 import { focusForClaude, newProjectOfKind, openInTab, projectsForClaude } from './workspace';
@@ -140,7 +142,8 @@ function outlineNodes(nodes: SceneNode[]): unknown[] {
       ...(n.type === 'text' ? { text: n.text.length > 60 ? `${n.text.slice(0, 60)}…` : n.text } : {}),
       ...(n.visible ? {} : { hidden: true }),
       ...(nodeLink(n) !== undefined ? { link: nodeLink(n) } : {}),
-      ...(n.type === 'frame' ? { children: rec(n.children) } : {}),
+      // A repeat is one card and a table. The other cards are copies of it, so they'd only add noise.
+      ...(n.type === 'frame' && n.repeat ? { repeat: { fields: n.repeat.fields, columns: n.repeat.columns, cards: n.repeat.rows.length }, children: rec(n.children.slice(0, 1).map((l) => (l.type === 'frame' ? { ...l, children: l.children.slice(0, 1) } : l))) } : n.type === 'frame' ? { children: rec(n.children) } : {}),
     }));
   return rec(nodes);
 }
@@ -643,6 +646,72 @@ const handlers: Record<string, (p: Params) => Promise<unknown> | unknown> = {
     delete spec.boardId;
     const id = s.wrapNodes(ids, auto, normalisePatch('frame', { gap: 0, padding: 0, ...spec }) as Partial<FrameNode>);
     return { id, wrapped: ids.length };
+  },
+
+  async repeat(p) {
+    const s = useStore.getState();
+    const target = p.key ? findByKey(s.doc.nodes, p.key)[0] : findNode(s.doc.nodes, p.id ?? '');
+    if (!target) throw new Error('Pass the id or key of the card, or of a repeat frame.');
+    const host = target.type === 'frame' && target.repeat ? target : repeatHost(s.doc.nodes, target.id);
+    if (p.stop) {
+      if (!host) throw new Error("That layer isn't in a repeat.");
+      s.change((d) => stopRepeat(findNode(d.nodes, host.id) as FrameNode));
+      return { id: host.id, stopped: true };
+    }
+    let id = host?.id ?? '';
+    if (!host) {
+      const layers = (m?: Record<string, string>) => {
+        if (!m) return undefined;
+        return (d: Doc) =>
+          Object.fromEntries(
+            Object.entries(m).map(([field, ref]) => {
+              const n = findByKey(d.nodes, ref)[0] ?? findNode(d.nodes, ref);
+              if (!n) throw new Error(`No layer "${ref}" for the field "${field}".`);
+              return [field, n];
+            }),
+          );
+      };
+      s.change((d) => {
+        id = startRepeat(d, target.id, { columns: p.columns, gap: p.gap, fields: layers(p.fields)?.(d), links: layers(p.links)?.(d) });
+      });
+    }
+    const frame = () => findNode(useStore.getState().doc.nodes, id) as FrameNode;
+    const failed: { card: number; field: string; value: string; why: string }[] = [];
+    let rows: Record<string, string>[] | undefined;
+    if (Array.isArray(p.rows)) {
+      if (!p.rows.length) throw new Error('A repeat needs at least one row. Pass stop: true to end it.');
+      const spec = frame().repeat!;
+      const unknown = [...new Set((p.rows as Params[]).flatMap((r) => Object.keys(r)))].filter((k) => !fieldNamed(spec, k));
+      if (unknown.length) throw new Error(`No field called ${unknown.join(', ')}. This repeat has: ${spec.fields.join(', ')}.`);
+      const photos = photoFields(frame());
+      const seen = new Map<string, string>();
+      rows = [];
+      for (const [i, row] of (p.rows as Params[]).entries()) {
+        const out: Record<string, string> = {};
+        for (const [k, raw] of Object.entries(row)) {
+          const field = fieldNamed(spec, k)!;
+          const value = String(raw ?? '');
+          out[field] = value;
+          if (!photos.includes(field)) continue;
+          try {
+            if (!seen.has(value)) seen.set(value, await photoCell(value));
+            out[field] = seen.get(value)!;
+          } catch (e) {
+            out[field] = '';
+            failed.push({ card: i + 1, field, value, why: (e as Error).message });
+          }
+        }
+        rows.push(out);
+      }
+    }
+    useStore.getState().change((d) => {
+      const f = findNode(d.nodes, id) as FrameNode;
+      if (p.columns !== undefined) f.repeat!.columns = p.columns;
+      if (p.gap !== undefined) f.gap = p.gap;
+      if (rows) setRows(f.repeat!, rows);
+    });
+    const done = frame();
+    return { id, cardId: done.children[0]?.type === 'frame' ? done.children[0].children[0]?.id : null, fields: done.repeat?.fields, columns: done.repeat?.columns, cards: done.repeat?.rows.length, failed };
   },
 
   delete_nodes(p) {

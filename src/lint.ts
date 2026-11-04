@@ -51,6 +51,7 @@ const contains = (outer: Box, p: { x: number; y: number }) => p.x >= outer.x && 
 export function lintBoard(doc: Doc, layout: LayoutMap, brand: Brand | null = null): { issues: LintIssue[]; summary: string } {
   const issues: LintIssue[] = [];
   lintWeights(doc, issues);
+  lintRepeats(doc, issues);
   if (doc.kind === 'email') {
     lintLinks(doc, issues);
     if (brand) lintBrand(doc, brand, 'px', issues);
@@ -248,6 +249,17 @@ function lintWeights(doc: Doc, issues: LintIssue[]) {
     if (!weights || weights.includes(n.fontWeight)) return;
     const message = `${n.fontFamily} has no ${n.fontWeight} weight. Available: ${weights.join(', ')}.`;
     issues.push({ severity: 'warn', rule: 'font-weight', message, page: null, ids: [n.id], keys: [n.key ?? null] });
+  });
+}
+
+function lintRepeats(doc: Doc, issues: LintIssue[]) {
+  walk(doc.nodes, (n) => {
+    if (n.type !== 'frame' || !n.repeat) return;
+    n.repeat.rows.forEach((row, i) => {
+      const empty = n.repeat!.fields.filter((f) => !row[f]);
+      if (empty.length) issues.push({ severity: 'warn', rule: 'repeat', message: `Card ${i + 1} in "${n.name}" has nothing for ${empty.join(', ')}.`, page: null, ids: [n.id], keys: [n.key ?? null] });
+    });
+    return false;
   });
 }
 

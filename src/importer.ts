@@ -1,4 +1,5 @@
 import { getAsset, isFontFile, isHeic, isImageFile, registerFont, registerImage, sortFiles } from './assets';
+import { fetchImage, readFile } from './platform';
 import { useStore } from './store';
 import { findNode, makeImage } from './tree';
 import type { AssetMeta, ImageNode } from './types';
@@ -85,6 +86,30 @@ export async function importFiles(files: File[], opts: { dropAt?: { x: number; y
   }
   s.set({ traySelection: ids, leftTab: 'photos' });
   s.toast('Added to Photos. Drag one onto a slide.');
+}
+
+/**
+ * What a table's photo cell can hold: a photo already in the project (id or name), a web link or a
+ * file path. Returns the photo's id, bringing it in first if it's new.
+ */
+export async function photoCell(value: string): Promise<string> {
+  const v = value.trim();
+  if (!v) return '';
+  const known = useStore.getState().doc.assets;
+  if (known[v]) return v;
+  const named = Object.values(known).find((a) => a.name === v || a.name.replace(/\.[^.]+$/, '') === v);
+  if (named) return named.id;
+  let blob: Blob;
+  if (/^https?:\/\//i.test(v)) {
+    const r = await fetchImage(v);
+    blob = new Blob([r.data as BlobPart], { type: r.type });
+  } else if (/^(\/|[a-z]:\\)/i.test(v)) {
+    blob = new Blob([(await readFile(v)).data as BlobPart]);
+  } else throw new Error(`No photo called "${v}"`);
+  const name = decodeURIComponent(v.split(/[?#]/)[0].split(/[\\/]/).pop() || 'Photo');
+  const meta = await registerImage(blob, name);
+  useStore.getState().addAssets([meta]);
+  return meta.id;
 }
 
 function pick(configure: (input: HTMLInputElement) => void) {

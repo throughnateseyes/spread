@@ -7,6 +7,7 @@ import RightPanel from './components/RightPanel';
 import ExportDialog from './components/ExportDialog';
 import PreviewModal from './components/PreviewModal';
 import ArrangeDialog from './components/ArrangeDialog';
+import RepeatDialog from './components/RepeatDialog';
 import EmailExportDialog from './components/EmailExportDialog';
 import PdfExportDialog from './components/PdfExportDialog';
 import ClaudeDialog from './components/ClaudeDialog';
@@ -95,6 +96,7 @@ export default function App() {
       <SaveToLibraryDialog />
       {modal === 'preview' && <PreviewModal />}
       {modal === 'arrange' && <ArrangeDialog />}
+      {modal === 'repeat' && <RepeatDialog />}
       {modal === 'shortcuts' && (
         <Modal title="Keyboard shortcuts" onClose={close} width={560}>
           <div className="shortcuts">

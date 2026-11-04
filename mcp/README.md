@@ -36,6 +36,7 @@ Every tool carries MCP safety hints: looking tools are marked read-only, and onl
 | `spread_get_state` | One board: slides, node tree with absolute boxes, selection, photo tray, plus the list of all boards. `detail: 'outline'` trims the tree to ids, names and boxes |
 | `spread_list_links` | Every link on a board, with empty, placeholder and invalid ones flagged |
 | `spread_wrap_nodes` | Wrap existing layers in a frame or auto layout frame without rebuilding them |
+| `spread_repeat` | Fill a grid from data: one card plus rows, with photos from links or files |
 | `spread_import_photos` | Import files or folders (images and fonts) by absolute path |
 | `spread_arrange` | Lay photos across slides: `one-per-slide`, `panorama`, `collage`, `brick`; `slides` sets the slide count |
 | `spread_add_nodes` | Add text, image, rect, ellipse or frame layers (auto layout supported) |

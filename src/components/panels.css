@@ -136,3 +136,17 @@
 .link-row.warn .link-row-url { color: var(--danger, #d14343); }
 .link-badge { position: absolute; left: 0; top: 0; z-index: 2; display: grid; place-items: center; width: 16px; height: 16px; padding: 0; border: none; border-radius: 4px; background: var(--accent); color: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3); cursor: pointer; }
 .link-badge.warn { background: var(--danger, #d14343); }
+
+/* Repeating cards */
+.repeat-count { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.repeat-hint { color: var(--muted); font-size: 12px; margin: 0 0 12px; }
+.repeat-table { overflow: auto; max-height: 60vh; }
+.repeat-table table { border-collapse: collapse; width: 100%; }
+.repeat-table th, .repeat-table td { padding: 2px 3px; vertical-align: middle; min-width: 130px; }
+.repeat-table th { position: sticky; top: 0; background: var(--panel, var(--bg)); z-index: 1; }
+.repeat-table .repeat-num { min-width: 24px; width: 24px; color: var(--muted); font-size: 11px; text-align: right; font-variant-numeric: tabular-nums; }
+.repeat-table input { width: 100%; box-sizing: border-box; height: 28px; padding: 0 8px; border: 1px solid transparent; border-radius: 4px; background: var(--hover); color: var(--text); font: inherit; }
+.repeat-table input:focus { outline: none; border-color: var(--accent, #0d99ff); }
+.repeat-table th input { background: none; color: var(--muted); font-weight: 500; }
+.repeat-photo { display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; padding: 0; overflow: hidden; border: 1px dashed var(--faint); border-radius: 4px; background: none; color: var(--muted); font-size: 10px; }
+.repeat-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
