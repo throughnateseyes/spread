@@ -1,15 +1,18 @@
 import { isTyping } from './typing';
 import { useStore, currentLayout, activeOrigin } from './store';
-import { cloneWithNewIds, findNode, makeText, pathTo } from './tree';
+import { cloneWithNewIds, collectAssetIds, findNode, makeText, pathTo } from './tree';
 import { absoluteBox } from './layout';
 import { importFiles } from './importer';
-import type { SceneNode } from './types';
+import type { AssetMeta, SceneNode } from './types';
 
 // Internal clipboard for nodes (with absolute positions so paste can land anywhere),
 // plus OS clipboard integration: pasted images import, pasted text becomes a text layer.
 
 const MARKER = '⁣spread-nodes';
-let clip: { nodes: SceneNode[]; abs: { x: number; y: number }[] } | null = null;
+let clip: { nodes: SceneNode[]; abs: { x: number; y: number }[]; assets: AssetMeta[] } | null = null;
+
+/** Photos the clipboard still needs after the project they came from closes. */
+export const clipAssetIds = () => clip?.assets.map((a) => a.id) ?? [];
 /** Where the last paste of this clip landed (slide index) and how many times, for the cascade. */
 let cascade = { slide: -1, n: 0 };
 /** The pointer's last position over the canvas (client px), or null once it leaves. */
@@ -30,7 +33,8 @@ export function copySelection() {
     }
   }
   if (!nodes.length) return false;
-  clip = { nodes, abs };
+  const used = collectAssetIds(nodes);
+  clip = { nodes, abs, assets: Object.values(s.doc.assets).filter((a) => used.has(a.id)) };
   cascade = { slide: -1, n: 0 };
   navigator.clipboard?.writeText(MARKER).catch(() => {});
   return true;
@@ -48,7 +52,10 @@ export function pasteClipboard(at?: { x: number; y: number }, opts: { inPlace?: 
   if (!clip) return false;
   if (opts.inPlace) pastedInPlaceAt = Date.now();
   const s = useStore.getState();
-  const d = s.doc;
+  // Copied in another project tab: the photos join this project too, so they save with it.
+  const incoming = clip.assets.filter((a) => !s.doc.assets[a.id]);
+  if (incoming.length) s.addAssets(incoming);
+  const d = useStore.getState().doc;
   const minX = Math.min(...clip.abs.map((a) => a.x));
   const minY = Math.min(...clip.abs.map((a) => a.y));
   let dx = 0;
@@ -79,6 +86,7 @@ export function pasteClipboard(at?: { x: number; y: number }, opts: { inPlace?: 
 
 /** True when copy and paste belong to text, like a field or words selected in the Claude chat. */
 function onText() {
+  if (useStore.getState().homeOpen) return true;
   const sel = window.getSelection();
   return isTyping() || (!!sel && !sel.isCollapsed);
 }

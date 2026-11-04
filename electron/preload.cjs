@@ -21,6 +21,20 @@ contextBridge.exposeInMainWorld('spreadNative', {
   reveal: (path) => ipcRenderer.invoke('reveal', path),
   printPdf: (opts) => ipcRenderer.invoke('print-pdf', opts),
   setDirty: (v) => ipcRenderer.invoke('set-dirty', v),
+  onFlushClose: (cb) => {
+    const listener = () => cb();
+    ipcRenderer.on('flush-close', listener);
+    return () => ipcRenderer.removeListener('flush-close', listener);
+  },
+  flushed: (ok) => ipcRenderer.send('flushed', ok),
+  projectsRead: () => ipcRenderer.invoke('projects-read'),
+  projectsWrite: (index) => ipcRenderer.invoke('projects-write', index),
+  projectFreePath: (opts) => ipcRenderer.invoke('project-free-path', opts),
+  projectRename: (opts) => ipcRenderer.invoke('project-rename', opts),
+  projectDuplicate: (file) => ipcRenderer.invoke('project-duplicate', file),
+  projectTrash: (file) => ipcRenderer.invoke('project-trash', file),
+  projectThumb: (opts) => ipcRenderer.invoke('project-thumb', opts),
+  projectBackup: (file) => ipcRenderer.invoke('project-backup', file),
   brandsList: () => ipcRenderer.invoke('brands-list'),
   brandSave: (opts) => ipcRenderer.invoke('brand-save', opts),
   brandWriteFont: (opts) => ipcRenderer.invoke('brand-write-font', opts),

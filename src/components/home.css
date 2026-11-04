@@ -1,0 +1,81 @@
+/* ---------- tab strip ---------- */
+.app.with-tabs { grid-template-rows: 36px 48px minmax(0, 1fr); }
+.tabbar { grid-column: 1 / -1; display: flex; align-items: center; gap: 4px; min-width: 0; padding: 0 8px; background: var(--bg); border-bottom: 1px solid var(--border); }
+.ptabs { display: flex; align-items: center; gap: 2px; min-width: 0; height: 100%; flex: 0 1 auto; overflow: hidden; }
+.ptab-home, .ptab-new { flex: none; width: 28px; height: 28px; display: grid; place-items: center; border: 0; border-radius: var(--radius); background: none; color: var(--muted); cursor: pointer; }
+.ptab-home:hover, .ptab-new:hover { background: var(--hover); color: var(--text); }
+.ptab-home.on { background: var(--panel-2); color: var(--text); }
+.ptab { display: flex; align-items: center; gap: 8px; flex: 0 1 200px; min-width: 88px; height: 28px; padding: 0 4px 0 8px; border-radius: var(--radius); color: var(--muted); font-size: 12px; cursor: default; }
+.ptab:hover { background: var(--hover); color: var(--text); }
+.ptab.on { background: var(--panel-2); color: var(--text); }
+.ptab.over { box-shadow: inset 2px 0 0 var(--accent); }
+.ptab svg { flex: none; }
+.ptab-name { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.ptab-close { flex: none; width: 20px; height: 20px; display: grid; place-items: center; border: 0; border-radius: var(--radius); background: none; color: inherit; opacity: 0; cursor: pointer; }
+.ptab:hover .ptab-close, .ptab.on .ptab-close, .ptab-close:focus-visible { opacity: 1; }
+.ptab-close:hover { background: var(--raised); }
+.tabbar { position: relative; }
+.ptab-loading { position: absolute; left: 0; right: 0; bottom: -1px; z-index: 95; height: 2px; overflow: hidden; }
+.ptab-loading::after { content: ''; position: absolute; top: 0; bottom: 0; left: 0; width: 30%; background: var(--accent); animation: ptab-load 1s var(--ease) infinite; }
+@keyframes ptab-load { from { transform: translateX(-100%); } to { transform: translateX(340%); } }
+@media (prefers-reduced-motion: reduce) { .ptab-loading::after { width: 100%; animation: none; opacity: 0.6; } }
+.name-input { flex: 1; min-width: 0; width: 100%; height: 22px; padding: 0 4px; border: 1px solid var(--accent); border-radius: var(--radius); background: var(--bg); color: var(--text); font: inherit; outline: 0; }
+
+/* ---------- Home ---------- */
+.home { position: fixed; inset: 36px 0 0; z-index: 90; display: grid; grid-template-columns: 224px minmax(0, 1fr); background: var(--bg); color: var(--text); }
+.hp-rail { display: flex; flex-direction: column; gap: 2px; min-height: 0; padding: 16px 8px; overflow: auto; border-right: 1px solid var(--border); }
+.hp-rail-item { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 32px; padding: 0 8px; border: 0; border-radius: var(--radius); background: none; color: var(--muted); font: inherit; font-size: 13px; text-align: left; cursor: default; }
+.hp-rail-item span { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.hp-rail-item small { color: var(--faint); font-size: 12px; }
+.hp-rail-item:hover { background: var(--hover); color: var(--text); }
+.hp-rail-item.on { background: var(--panel-2); color: var(--text); }
+.hp-rail-item.over { box-shadow: inset 0 0 0 1px var(--accent); background: var(--accent-soft); color: var(--text); }
+.hp-rail-head { display: flex; align-items: center; justify-content: space-between; margin-top: 16px; padding: 0 4px 4px 8px; color: var(--faint); font-size: 12px; }
+.hp-rail-head button { width: 24px; height: 24px; display: grid; place-items: center; border: 0; border-radius: var(--radius); background: none; color: var(--muted); cursor: pointer; }
+.hp-rail-head button:hover { background: var(--hover); color: var(--text); }
+.hp-rail-hint { margin: 4px 8px 0; color: var(--faint); font-size: 12px; line-height: 1.45; }
+.hp-rail-foot { display: flex; flex-direction: column; gap: 2px; margin-top: auto; padding-top: 16px; }
+.hp-rail-foot button { min-height: 32px; padding: 0 8px; border: 0; border-radius: var(--radius); background: none; color: var(--muted); font: inherit; font-size: 13px; text-align: left; cursor: default; }
+.hp-rail-foot button:hover { background: var(--hover); color: var(--text); }
+
+.hp-main { min-width: 0; overflow: auto; padding: 32px 40px 48px; }
+.hp-head { display: flex; align-items: center; gap: 12px; }
+.hp-head h1 { flex: 1; min-width: 0; margin: 0; overflow: hidden; font-size: 20px; font-weight: 600; letter-spacing: -0.01em; white-space: nowrap; text-overflow: ellipsis; }
+.hp-search { display: flex; align-items: center; gap: 8px; width: 220px; height: var(--h-control); padding: 0 8px; border-radius: var(--radius); background: var(--panel-2); color: var(--faint); }
+.hp-search:focus-within { box-shadow: inset 0 0 0 1px var(--accent); }
+.hp-search input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; background: none; color: var(--text); font: inherit; font-size: 13px; outline: 0; }
+.hp-filters { display: flex; gap: 4px; margin: 20px 0 24px; }
+.hp-filters button { height: 28px; padding: 0 12px; border: 0; border-radius: 14px; background: none; color: var(--muted); font: inherit; font-size: 13px; cursor: default; }
+.hp-filters button:hover { color: var(--text); }
+.hp-filters button.on { background: var(--panel-2); color: var(--text); }
+
+.hp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(216px, 1fr)); gap: 28px 20px; }
+.hp-card { position: relative; min-width: 0; }
+.hp-card.missing { opacity: 0.55; }
+.hp-thumb { display: grid; place-items: center; width: 100%; aspect-ratio: 4 / 3; padding: 0; overflow: hidden; border: 0; border-radius: var(--radius-lg); background: var(--panel-2); box-shadow: inset 0 0 0 1px var(--hairline); color: var(--faint); cursor: default; }
+.hp-thumb img { width: 100%; height: 100%; object-fit: cover; object-position: top center; display: block; }
+.hp-thumb:hover, .hp-thumb:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.hp-more { position: absolute; top: 8px; right: 8px; width: 28px; height: 28px; display: grid; place-items: center; border: 0; border-radius: var(--radius); background: var(--panel); color: var(--text); opacity: 0; cursor: pointer; }
+.hp-card:hover .hp-more, .hp-more:focus-visible { opacity: 1; }
+.hp-more:hover { background: var(--hover); }
+.hp-info { display: flex; flex-direction: column; gap: 2px; padding: 10px 2px 0; min-width: 0; }
+.hp-info strong { overflow: hidden; font-size: 13px; font-weight: 500; white-space: nowrap; text-overflow: ellipsis; }
+.hp-info span { color: var(--muted); font-size: 12px; }
+.hp-none { margin: 48px 0; color: var(--muted); font-size: 13px; text-align: center; }
+
+.hp-empty { display: flex; flex-direction: column; align-items: center; gap: 20px; margin-top: 15vh; }
+.hp-empty h2 { margin: 0; font-size: 16px; font-weight: 500; }
+.hp-starts { display: flex; gap: 12px; }
+.hp-starts button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; width: 144px; height: 112px; border: 0; border-radius: var(--radius-lg); background: var(--panel); color: var(--text); font: inherit; font-size: 13px; cursor: default; }
+.hp-starts button:hover { background: var(--hover); }
+
+/* ---------- ⌘K ---------- */
+.switcher-scrim { position: fixed; inset: 0; z-index: 140; display: flex; justify-content: center; padding-top: 14vh; background: rgba(0, 0, 0, 0.32); }
+.switcher { width: 520px; max-width: calc(100vw - 32px); max-height: 420px; display: flex; flex-direction: column; align-self: flex-start; overflow: hidden; border: 1px solid var(--border-strong); border-radius: var(--radius-xl); background: var(--panel); box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4); }
+.switcher input { height: 48px; padding: 0 16px; border: 0; border-bottom: 1px solid var(--border); background: none; color: var(--text); font: inherit; font-size: 14px; outline: 0; }
+.switcher-list { padding: 8px; overflow: auto; }
+.switcher-list button { display: flex; align-items: center; gap: 8px; width: 100%; height: 36px; padding: 0 8px; border: 0; border-radius: var(--radius); background: none; color: var(--text); font: inherit; font-size: 13px; text-align: left; cursor: default; }
+.switcher-list button.on { background: var(--hover); }
+.switcher-list span { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.switcher-list small { color: var(--muted); font-size: 12px; }
+.switcher-list p { margin: 12px 8px; color: var(--muted); font-size: 13px; }

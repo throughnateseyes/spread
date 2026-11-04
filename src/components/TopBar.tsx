@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { openSwitcher } from './Switcher';
 import { MOD, useStore } from '../store';
 import type { Tool } from '../types';
 import { Button, IconButton } from '../ui/controls';
@@ -86,11 +87,11 @@ export default function TopBar() {
       </div>
 
       <div className="topbar-center">
-        <Tooltip label="Project name, used for export file names">
+        <Tooltip label="Board name, used for export file names">
           <input
             className="doc-name"
             value={name}
-            aria-label="Project name"
+            aria-label="Board name"
             spellCheck={false}
             onFocus={(e) => {
               nameAtFocus.current = name;
@@ -113,7 +114,7 @@ export default function TopBar() {
         </Tooltip>
         {dirty && (
           <div className="topbar-meta">
-            <Tooltip label="Unsaved changes, autosaved locally">
+            <Tooltip label={isElectron ? 'Saving…' : 'Unsaved changes, autosaved locally'}>
               <span className="topbar-dirty" aria-label="Unsaved changes" />
             </Tooltip>
           </div>
@@ -144,7 +145,7 @@ function SpreadMenu() {
   const theme = useTheme();
   const set = useStore((s) => s.set);
   const items: MenuItem[] = [
-    { label: 'New project', fn: () => newProject() },
+    ...(isElectron ? [{ label: 'Go to project…', kbd: `${MOD}+K`, fn: () => openSwitcher() }, null] : [{ label: 'New project', fn: () => newProject() }]),
     { label: 'Open…', kbd: `${MOD}+O`, fn: () => openProject() },
     { label: 'Save', kbd: `${MOD}+S`, fn: () => saveProject() },
     { label: 'Save as…', kbd: `${MOD}+Shift+S`, fn: () => saveProject(true) },

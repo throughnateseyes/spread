@@ -51,7 +51,8 @@ Every tool carries MCP safety hints: looking tools are marked read-only, and onl
 | `spread_get_brand` | A brand kit in full: colors and roles, fonts and roles, type scale, spacing, voice, rules |
 | `spread_save_brand` | Create or update a kit (import from a design system, DESIGN.md or CSS; `addRules` for learned rules; `fontFiles` to copy fonts in) |
 | `spread_use_brand` | Switch the project to a brand, or to none |
-| `spread_save_project` / `spread_open_project` / `spread_new_project` | `.spread` project files |
+| `spread_list_projects` | Every project on Home: name, path, kinds, boards, folder and last change |
+| `spread_save_project` / `spread_open_project` / `spread_new_project` | `.spread` project files; open and new use their own tab |
 | `spread_undo` / `spread_redo` | History |
 | `spread_list_fonts` | Font families you can use |
 

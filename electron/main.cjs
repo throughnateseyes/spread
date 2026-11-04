@@ -8,11 +8,15 @@ const path = require('path');
 const claude = require('./claude.cjs');
 const brands = require('./brands.cjs');
 const library = require('./library.cjs');
+const projects = require('./projects.cjs');
 const hosting = require('./hosting.cjs');
 const chat = require('./chat.cjs');
 
 let win = null;
 let dirty = false;
+let closeOk = false;
+let quitting = false;
+let flushTimer = null;
 let rendererReady = false;
 const pendingPaths = [];
 const readyWaiters = [];
@@ -42,7 +46,8 @@ function buildMenu() {
     Menu.buildFromTemplate([
       { label: app.name, submenu: [{ role: 'about' }, { type: 'separator' }, { role: 'hide' }, { role: 'hideOthers' }, { type: 'separator' }, { role: 'quit' }] },
       { label: 'Edit', submenu: [{ role: 'cut' }, { role: 'copy' }, { role: 'paste' }] },
-      { label: 'Window', submenu: [{ role: 'minimize' }, { role: 'close' }] },
+      // ⌘W closes the project tab in the renderer, so the window takes ⇧⌘W.
+      { label: 'Window', submenu: [{ role: 'minimize' }, { role: 'close', accelerator: 'Shift+CmdOrCtrl+W' }] },
     ]),
   );
 }
@@ -99,23 +104,45 @@ function createWindow() {
     }
   });
 
+  // Unsaved work is written to its file before the window goes, so closing never asks.
   win.on('close', (e) => {
-    if (!dirty) return;
+    if (closeOk || !dirty || !rendererReady) return;
+    e.preventDefault();
+    if (flushTimer) return;
+    win.webContents.send('flush-close');
+    flushTimer = setTimeout(() => finishClose(false), 8000);
+  });
+  win.on('closed', () => {
+    win = null;
+    rendererReady = false;
+    closeOk = false;
+  });
+}
+
+function finishClose(saved) {
+  clearTimeout(flushTimer);
+  flushTimer = null;
+  if (!win) return;
+  if (!saved) {
     const choice = dialog.showMessageBoxSync(win, {
       type: 'warning',
       buttons: ['Close without saving', 'Cancel'],
       defaultId: 1,
       cancelId: 1,
-      message: 'You have unsaved changes.',
-      detail: 'Your work is autosaved locally and will be restored next time, but it has not been saved to a .spread file.',
+      message: "Your latest changes couldn't be saved.",
+      detail: 'Closing now loses them.',
     });
-    if (choice === 1) e.preventDefault();
-  });
-  win.on('closed', () => {
-    win = null;
-    rendererReady = false;
-  });
+    if (choice === 1) {
+      quitting = false;
+      return;
+    }
+  }
+  closeOk = true;
+  win.close();
+  if (quitting) app.quit();
 }
+
+ipcMain.on('flushed', (_e, ok) => finishClose(!!ok));
 
 // ---------- IPC ----------
 
@@ -138,8 +165,7 @@ ipcMain.handle('save-file', async (_e, { defaultPath, filters, data }) => {
 });
 
 ipcMain.handle('write-file', async (_e, { path: p, data }) => {
-  await fs.promises.mkdir(path.dirname(p), { recursive: true });
-  await fs.promises.writeFile(p, toBuffer(data));
+  await projects.writeAtomic(p, toBuffer(data));
   return p;
 });
 
@@ -300,6 +326,14 @@ ipcMain.handle('brand-delete', (_e, id) => brands.remove(id));
 
 // ---------- design library and picture hosting ----------
 
+ipcMain.handle('projects-read', () => projects.read());
+ipcMain.handle('projects-write', (_e, index) => projects.write(index));
+ipcMain.handle('project-free-path', (_e, { dir, name }) => projects.freePath(dir || projects.defaultDir(), name));
+ipcMain.handle('project-rename', (_e, opts) => projects.rename(opts));
+ipcMain.handle('project-duplicate', (_e, file) => projects.duplicate(file));
+ipcMain.handle('project-trash', (_e, file) => projects.trash(file));
+ipcMain.handle('project-thumb', (_e, opts) => projects.writeThumb(opts));
+ipcMain.handle('project-backup', (_e, file) => projects.backup(file));
 ipcMain.handle('library-list', (_e, kind) => library.list(kind));
 ipcMain.handle('library-save', (_e, opts) => library.save(opts));
 ipcMain.handle('library-delete', (_e, opts) => library.remove(opts));
@@ -400,7 +434,7 @@ async function handleBridge(req, res) {
       resolve({ id, error: 'Timed out waiting for Spread', timeout: true });
     }, RPC_TIMEOUT);
     pendingRpc.set(id, { resolve, timer });
-    win.webContents.send('automation-request', { id, method: body.method, params: body.params || {} });
+    win.webContents.send('automation-request', { id, method: body.method, params: body.params || {}, project: decodeURIComponent(req.headers['x-spread-project'] || '') || null });
   });
   if (resp.timeout) return sendJson(res, 504, { error: resp.error });
   if (resp.error !== undefined) return sendJson(res, 400, { error: String(resp.error) });
@@ -470,6 +504,10 @@ if (!app.requestSingleInstanceLock()) {
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();
     });
+  });
+
+  app.on('before-quit', () => {
+    quitting = true;
   });
 
   app.on('will-quit', () => {

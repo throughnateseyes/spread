@@ -59,7 +59,9 @@ To build an installer, run `npm run dist:win` (NSIS installer plus a portable `.
 
 **Library:** a row's ⋯ menu has **Save as template** and **Save as reference**; right-click an email section to save just that block. Templates show up in New board and the Section menu of every project. References are designs you rate highly, with a line on why, and Claude looks at them before designing something similar. **Spread menu → Library…** manages both.
 
-Your work autosaves locally (IndexedDB) and comes back if you close the app. Use **Ctrl+S** to save a `.spread` file you can reopen or archive.
+**Home and tabs:** the house icon opens Home, which shows every project with a thumbnail. Filter by Social, Email or Pages, search by name, and drag a card onto a folder to organize. Keep separate work in separate projects (one for each building's e-blasts, one for the newsletter) and open as many as you like: each gets a tab above the toolbar. **Ctrl+K** jumps to any project by name. A row's ⋯ menu has **Copy to another project…**, and copying and pasting layers works between tabs, photos included. Open tabs come back when you restart.
+
+Every project is a normal `.spread` file, in `Pictures/Spread` unless you save it elsewhere. Spread saves it for you two seconds after a change and keeps the last three safety copies in `~/.spread/backups`. Folders only live on Home, so organizing never moves your files. In the browser version your work autosaves locally (IndexedDB) instead.
 
 ## Connecting Claude
 
@@ -130,6 +132,8 @@ With a brand on:
 | Ctrl+] / Ctrl+[ | Bring forward / send backward |
 | Ctrl+' | Toggle the layout grid |
 | Ctrl+J | Show / hide the Claude panel |
+| Ctrl+K or Ctrl+T | Jump to a project |
+| Ctrl+Tab, Ctrl+1–9, Ctrl+W | Next tab, go to a tab, close the tab |
 | Shift (resizing), Alt (dragging) | Keep proportions, disable snapping |
 
 Press **?** (or open the **Spread** menu → Keyboard shortcuts) for the full list. On Mac, Ctrl is ⌘.

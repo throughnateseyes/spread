@@ -3,6 +3,7 @@ import { del, get, keys, set } from 'idb-keyval';
 import { brandById, installBrandFromProject } from './brand';
 import { clearAssets, extFor, getAsset, registerFont, registerImage } from './assets';
 import { isElectron, native, openProjectFile, saveBytes, setDirtyFlag, writeToPath } from './platform';
+import { newProjectOfKind, noteSaved, openInTab } from './workspace';
 import { useStore } from './store';
 import { makeProject, migrateProject } from './tree';
 import { readComments, savableComments } from './comments';
@@ -12,7 +13,9 @@ import type { AssetMeta, Brand, CanvasComment, Doc, Project } from './types';
 // project's brand kit, so the file opens on-brand on a computer that doesn't have the kit yet).
 // A project holds one or more boards (carousel variations, emails). Version 1 files held a
 // single board under `doc`; they still open (migrated to a one-board project).
-// The working session is also autosaved to IndexedDB so nothing is lost on a crash or reload.
+// In the desktop app every project has a file, and changes are written to it a moment after they
+// happen (workspace.ts keeps the tabs and the Home list). In the browser there's no file, so the
+// working session is autosaved to IndexedDB instead.
 
 interface ProjectJson {
   app: 'spread';
@@ -76,7 +79,8 @@ async function registerMeta(meta: AssetMeta, blob: Blob) {
   else await registerImage(blob, meta.name, meta.id);
 }
 
-export async function loadProjectBytes(data: Uint8Array, path: string | null): Promise<void> {
+/** Returns whether it opened. Tabs share one asset registry, so the desktop app keeps what's loaded. */
+export async function loadProjectBytes(data: Uint8Array, path: string | null): Promise<boolean> {
   const { toast } = useStore.getState();
   let entries: Record<string, Uint8Array>;
   let project: Project;
@@ -91,14 +95,14 @@ export async function loadProjectBytes(data: Uint8Array, path: string | null): P
     comments = readComments(json.comments, project);
   } catch (e) {
     toast(`Couldn't open project: ${(e as Error).message}`, 'error');
-    return;
+    return false;
   }
   const byId = new Map<string, Uint8Array>();
   for (const [name, bytes] of Object.entries(entries)) {
     const m = name.match(/^assets\/([^.]+)\./);
     if (m) byId.set(m[1], bytes);
   }
-  clearAssets();
+  if (!isElectron) clearAssets();
   const missing: string[] = [];
   for (const meta of allAssetMetas(project)) {
     const bytes = byId.get(meta.id);
@@ -127,7 +131,7 @@ export async function loadProjectBytes(data: Uint8Array, path: string | null): P
     }
   }
   if (missing.length) toast(`${missing.length} asset(s) couldn't be loaded: ${missing.slice(0, 3).join(', ')}`, 'error');
-  else toast(`Opened ${projectName(project)}`, 'success');
+  return true;
 }
 
 // ---------- save / open / new ----------
@@ -159,16 +163,18 @@ function confirmDiscard() {
 }
 
 export async function openProject() {
-  if (!confirmDiscard()) return;
+  if (!isElectron && !confirmDiscard()) return;
   try {
     const f = await openProjectFile();
-    if (f) await loadProjectBytes(f.data, f.path);
+    if (f?.path && isElectron) await openInTab(f.path);
+    else if (f) await loadProjectBytes(f.data, f.path);
   } catch (e) {
     useStore.getState().toast(`Couldn't open: ${(e as Error).message}`, 'error');
   }
 }
 
 export async function newProject() {
+  if (isElectron) return void (await newProjectOfKind('carousel'));
   if (!confirmDiscard()) return;
   clearAssets();
   useStore.getState().replaceProject(makeProject());
@@ -181,6 +187,39 @@ export async function newProject() {
 const persisted = new Set<string>();
 let timer: ReturnType<typeof setTimeout> | null = null;
 let started = false;
+
+let saving: Promise<boolean> | null = null;
+const backedUp = new Set<string>();
+
+async function writeProject(): Promise<boolean> {
+  const { project, comments, filePath } = useStore.getState();
+  if (!filePath) return false;
+  try {
+    const bytes = await serializeProject();
+    // A safety copy from before this session's first change, since saving is automatic.
+    if (!backedUp.has(filePath)) {
+      backedUp.add(filePath);
+      await native?.projectBackup(filePath).catch(() => {});
+    }
+    await writeToPath(filePath, bytes);
+    const now = useStore.getState();
+    if (now.filePath === filePath && now.project === project && now.comments === comments) useStore.setState({ dirty: false });
+    return true;
+  } catch (e) {
+    useStore.getState().toast(`Couldn't save: ${(e as Error).message}`, 'error');
+    return false;
+  }
+}
+
+/** Writes the open project to its file now, waiting for any save already running. */
+export async function flushSave(): Promise<boolean> {
+  if (timer) clearTimeout(timer);
+  timer = null;
+  if (saving) await saving;
+  if (!useStore.getState().dirty || !useStore.getState().filePath) return true;
+  saving = writeProject().finally(() => (saving = null));
+  return saving;
+}
 
 async function persistNow() {
   const { project, comments, filePath, dirty } = useStore.getState();
@@ -211,21 +250,22 @@ export function startAutosave() {
   started = true;
   useStore.subscribe((s, prev) => {
     if (s.dirty !== prev.dirty) setDirtyFlag(s.dirty);
+    if (isElectron) {
+      if (!s.filePath || s.filePath !== prev.filePath) return;
+      if (s.dirty && (s.project !== prev.project || s.comments !== prev.comments)) {
+        if (timer) clearTimeout(timer);
+        timer = setTimeout(() => void flushSave().then((ok) => ok && noteSaved()), 2000);
+      }
+      return;
+    }
     if (s.project !== prev.project || s.comments !== prev.comments || s.filePath !== prev.filePath || s.dirty !== prev.dirty) {
       if (timer) clearTimeout(timer);
       timer = setTimeout(persistNow, 1500);
     }
   });
   setDirtyFlag(useStore.getState().dirty);
-  native?.onOpenPath(async (p) => {
-    if (!confirmDiscard()) return;
-    try {
-      const f = await native!.readFile(p);
-      await loadProjectBytes(f.data, f.path);
-    } catch (e) {
-      useStore.getState().toast(`Couldn't open ${p}: ${(e as Error).message}`, 'error');
-    }
-  });
+  native?.onOpenPath((p) => void openInTab(p));
+  native?.onFlushClose(() => void flushSave().then((ok) => native!.flushed(ok)));
 }
 
 export async function restoreAutosave(): Promise<boolean> {

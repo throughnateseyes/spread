@@ -26,12 +26,17 @@ import { installChat } from './chat';
 import { isElectron } from './platform';
 import { ensureDocFonts } from './fonts';
 import { restoreAutosave, startAutosave } from './project';
+import { initWorkspace } from './workspace';
+import TabBar from './components/TabBar';
+import Home from './components/Home';
+import Switcher from './components/Switcher';
 
 export default function App() {
   const modal = useStore((s) => s.modal);
   const toasts = useStore((s) => s.toasts);
   const doc = useStore((s) => s.doc);
   const chatOpen = useStore((s) => s.chatOpen) && isElectron;
+  const homeOpen = useStore((s) => s.homeOpen);
 
   useEffect(() => {
     const offs = [installShortcuts(), installClipboard(), installAutomation(), installChat()];
@@ -44,7 +49,7 @@ export default function App() {
     void loadBrands();
     void loadLibrary();
     let stopAutosave: (() => void) | void;
-    restoreAutosave()
+    (isElectron ? initWorkspace().then(() => false) : restoreAutosave())
       .then((restored) => {
         if (restored) {
           useStore.getState().toast('Restored your last session');
@@ -72,13 +77,16 @@ export default function App() {
   const close = () => useStore.getState().set({ modal: null });
   const emailRoot = emailRootOf(doc);
   return (
-    <div className={`app ${chatOpen ? 'with-chat' : ''}`}>
+    <div className={`app ${chatOpen ? 'with-chat' : ''} ${isElectron ? 'with-tabs' : ''}`}>
+      {isElectron && <TabBar />}
       <TopBar />
       <LeftPanel />
       <Canvas />
       <RightPanel />
       {chatOpen && <ClaudePanel />}
       <CanvasDock />
+      {homeOpen && <Home />}
+      {isElectron && <Switcher />}
       {modal === 'export' && (emailRoot ? <EmailExportDialog onClose={close} root={emailRoot} nodes={doc.nodes} /> : doc.kind === 'document' ? <PdfExportDialog /> : <ExportDialog />)}
       {modal === 'new-board' && <NewBoardDialog />}
       {modal === 'claude' && <ClaudeDialog />}

@@ -68,7 +68,9 @@ import {
   FloppyDiskIcon,
   FolderOpenIcon,
   FrameCornersIcon,
+  FolderSimpleIcon,
   HandIcon,
+  HouseSimpleIcon,
   HeartIcon,
   ImageIcon,
   ImageSquareIcon,
@@ -79,6 +81,7 @@ import {
   LinkSimpleIcon,
   LockSimpleIcon,
   LockSimpleOpenIcon,
+  MagnifyingGlassIcon,
   MagnifyingGlassMinusIcon,
   MagnifyingGlassPlusIcon,
   MinusIcon,
@@ -176,6 +179,9 @@ export const IconFonts = tuned(TextAaIcon, 'IconFonts');
 export const IconNew = tuned(FilePlusIcon, 'IconNew');
 export const IconOpen = tuned(FolderOpenIcon, 'IconOpen');
 export const IconFolder = IconOpen;
+export const IconFolderSimple = tuned(FolderSimpleIcon, 'IconFolderSimple');
+export const IconHome = tuned(HouseSimpleIcon, 'IconHome');
+export const IconSearch = tuned(MagnifyingGlassIcon, 'IconSearch');
 export const IconSave = tuned(FloppyDiskIcon, 'IconSave');
 export const IconUndo = tuned(ArrowUUpLeftIcon, 'IconUndo');
 export const IconRedo = tuned(ArrowUUpRightIcon, 'IconRedo');

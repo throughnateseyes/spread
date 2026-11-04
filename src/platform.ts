@@ -1,4 +1,4 @@
-import type { Brand, CommentStatus } from './types';
+import type { BoardKind, Brand, CommentStatus } from './types';
 
 // File IO that works in both Electron (via window.spreadNative) and a plain browser
 // (File System Access API when available, otherwise downloads / <input type=file>).
@@ -13,6 +13,8 @@ export interface AutomationRequest {
   id: string;
   method: string;
   params: Record<string, unknown>;
+  /** The project the calling Claude belongs to (URI-encoded path), when it runs in Spread's panel. */
+  project?: string | null;
 }
 
 export type AutomationResponse = { id: string; result: unknown } | { id: string; error: string };
@@ -66,6 +68,32 @@ export interface HostingStatus {
 }
 export type HostingAnswer<T> = ({ ok: true } & T) | { ok: false; error: string };
 
+export interface ProjectRecord {
+  path: string;
+  folderId: string | null;
+  /** When it was last opened here; 0 for files found in the default folder. */
+  openedAt: number;
+  /** The board types inside, most used first. */
+  kinds?: BoardKind[];
+  boards?: number;
+  /** Bumped when the thumbnail changes. */
+  thumbV?: number;
+  updatedAt?: number;
+  missing?: boolean;
+  thumbPath?: string;
+}
+
+export interface ProjectIndex {
+  version: 1;
+  folders: { id: string; name: string }[];
+  projects: ProjectRecord[];
+  /** Files taken off Home, so the default-folder scan doesn't bring them back. */
+  hidden: string[];
+  tabs: string[];
+  activeTab: string | null;
+  home: boolean;
+}
+
 export interface SpreadNative {
   platform: string;
   homeDir: string;
@@ -85,6 +113,18 @@ export interface SpreadNative {
   /** Prints self-contained HTML to a PDF (page size in inches). */
   printPdf(opts: { html: string; widthIn: number; heightIn: number }): Promise<Uint8Array>;
   setDirty(v: boolean): Promise<void>;
+  /** The window is closing with unsaved work: save, then call flushed. */
+  onFlushClose(cb: () => void): () => void;
+  flushed(ok: boolean): void;
+  /** The Home screen's index (electron/projects.cjs). */
+  projectsRead(): Promise<ProjectIndex & { dir: string }>;
+  projectsWrite(index: ProjectIndex): Promise<void>;
+  projectFreePath(opts: { dir?: string; name: string }): Promise<string>;
+  projectRename(opts: { from: string; name: string }): Promise<string>;
+  projectDuplicate(path: string): Promise<string>;
+  projectTrash(path: string): Promise<void>;
+  projectThumb(opts: { path: string; data: Uint8Array }): Promise<void>;
+  projectBackup(path: string): Promise<void>;
   /** The brand library (~/.spread/brands). Listed brands carry `dir`, their folder on disk. */
   brandsList(): Promise<(Brand & { dir: string })[]>;
   brandSave(opts: { brand: Brand; fontFiles?: { path: string; family: string }[] }): Promise<Brand & { dir: string }>;

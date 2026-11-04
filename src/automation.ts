@@ -12,8 +12,9 @@ import { exportPdf } from './pdf';
 import { lintBoard } from './lint';
 import { activeBrand, brandById, normalizeBrand, saveBrand, setProjectBrand, slugify, useBrands } from './brand';
 import { clearAutosave, loadProjectBytes, safeFileName, serializeProject } from './project';
+import { focusForClaude, newProjectOfKind, openInTab, projectsForClaude } from './workspace';
 import { BUNDLED_FONTS, SYSTEM_FONTS, uploadedFonts } from './fonts';
-import { homeDir, listFiles, onAutomationRequest, picturesDir, readFile, respondAutomation, writeFiles, writeToPath } from './platform';
+import { homeDir, isElectron, listFiles, onAutomationRequest, picturesDir, readFile, respondAutomation, writeFiles, writeToPath } from './platform';
 import { PAGE_PRESETS, type AssetMeta, type Doc, type ImageNode, type Paint, type SceneNode } from './types';
 
 // Renderer side of the local automation bridge (electron/main.cjs ⇄ mcp/server.mjs).
@@ -188,13 +189,13 @@ function boardsSummary() {
 }
 
 /** Methods that act on the project as a whole rather than one board. */
-const PROJECT_METHODS = new Set(['list_library', 'create_from_template', 'save_template', 'save_reference', 'batch', 'list_brands', 'get_brand', 'save_brand', 'use_brand', 'make_variants', 'list_email_templates', 'create_email', 'get_feedback', 'list_boards', 'create_board', 'duplicate_board', 'delete_board', 'update_board', 'render_overview', 'new_project', 'open_project', 'save_project', 'undo', 'redo', 'list_fonts', 'import_photos']);
+const PROJECT_METHODS = new Set(['list_projects', 'list_library', 'create_from_template', 'save_template', 'save_reference', 'batch', 'list_brands', 'get_brand', 'save_brand', 'use_brand', 'make_variants', 'list_email_templates', 'create_email', 'get_feedback', 'list_boards', 'create_board', 'duplicate_board', 'delete_board', 'update_board', 'render_overview', 'new_project', 'open_project', 'save_project', 'undo', 'redo', 'list_fonts', 'import_photos']);
 
 /** Methods whose purpose is to bring a board into focus. */
 const ACTIVATES = new Set(['create_email', 'activate_board', 'create_board', 'duplicate_board', 'select', 'export_slides']);
 
 /** Methods that only look: they leave the active board and selection exactly as the user had them. */
-const READ_ONLY = new Set(['list_library', 'list_brands', 'get_brand', 'lint', 'email_html', 'list_email_templates', 'get_feedback', 'get_state', 'list_boards', 'render_slides', 'render_overview', 'list_fonts', 'unused_photos']);
+const READ_ONLY = new Set(['list_projects', 'list_library', 'list_brands', 'get_brand', 'lint', 'email_html', 'list_email_templates', 'get_feedback', 'get_state', 'list_boards', 'render_slides', 'render_overview', 'list_fonts', 'unused_photos']);
 
 function requireBoard(id: unknown): string {
   const p = useStore.getState().project;
@@ -710,12 +711,24 @@ const handlers: Record<string, (p: Params) => Promise<unknown> | unknown> = {
 
   async open_project(p) {
     if (!p.path) throw new Error('Pass path');
+    if (isElectron) {
+      await openInTab(p.path);
+      return {};
+    }
     const f = await readFile(p.path);
     await loadProjectBytes(f.data, p.path);
     return {};
   },
 
+  list_projects() {
+    return { projects: projectsForClaude() };
+  },
+
   async new_project(p) {
+    if (isElectron) {
+      await newProjectOfKind('carousel', { name: p.name ? String(p.name) : undefined, dialog: false });
+      return {};
+    }
     const s = useStore.getState();
     if (s.dirty && s.doc.nodes.length && !p.discard) throw new Error('The open project has unsaved changes. Call save_project first, or pass discard: true.');
     clearAssets();
@@ -833,6 +846,7 @@ export async function runAutomation(method: string, params: Params = {}): Promis
 export function installAutomation() {
   return onAutomationRequest(async (req) => {
     try {
+      await focusForClaude(req.project ?? null, READ_ONLY.has(req.method) || req.method === 'open_project' || req.method === 'new_project' || req.method === 'list_projects');
       respondAutomation({ id: req.id, result: await runAutomation(req.method, req.params ?? {}) });
     } catch (e) {
       respondAutomation({ id: req.id, error: (e as Error).message ?? String(e) });

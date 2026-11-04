@@ -1,4 +1,5 @@
 import { isTyping } from '../typing';
+import { openSwitcher } from './Switcher';
 import { useEffect, useState } from 'react';
 import { useStore, boardFrames, BOARD_GAP, EMAIL_GAP, MOD } from '../store';
 import { Tooltip } from '../ui/Tooltip';
@@ -167,6 +168,7 @@ function BoardChrome({
     { label: 'Zoom to row', kbd: 'Shift+3', fn: zoomTo },
     ...(board.kind === 'carousel' ? [{ label: 'Preview', fn: () => (activate(), s().set({ modal: 'preview' })) }] : []),
     { label: 'Duplicate as variation', kbd: `${MOD}+Alt+D`, fn: () => s().duplicateBoard(board.id) },
+    ...(isElectron ? [{ label: 'Copy to another project…', fn: () => openSwitcher(board.id) }] : []),
     null,
     { label: 'Rename', fn: () => setEditing('name') },
     { label: board.note ? 'Edit note' : 'Add note', fn: () => setEditing('note') },

@@ -8,6 +8,7 @@ import { IconCopy, IconEmail, IconPlus } from '../ui/icons';
 import { EMAIL_SECTIONS, EMAIL_TEMPLATES } from '../email/templates';
 import { createEmailBoard, emailRootOf, insertEmailSection } from '../email/boards';
 import { createFromTemplate, insertSavedSection, useLibrary } from '../library';
+import { consumeStarter, keepStarter } from '../workspace';
 import { LibraryThumb } from './LibraryDialogs';
 import './library.css';
 import './newboard.css';
@@ -165,7 +166,10 @@ function KindArt({ kind }: { kind: BoardKind }) {
 }
 
 export function NewBoardDialog() {
-  const close = () => useStore.getState().set({ modal: null });
+  const close = () => {
+    keepStarter();
+    useStore.getState().set({ modal: null });
+  };
   // Starts on the kind you're working in: the next email from an email, the next carousel from a carousel.
   const [kind, setKind] = useState<BoardKind>(() => useStore.getState().doc.kind ?? 'carousel');
   const [page, setPage] = useState(PAGE_PRESETS[0].id);
@@ -187,7 +191,10 @@ export function NewBoardDialog() {
     const s = useStore.getState();
     if (savedId) {
       createFromTemplate(savedId, { photoIds: s.traySelection })
-        .then(close)
+        .then(() => {
+          consumeStarter();
+          close();
+        })
         .catch((e) => s.toast(`Couldn't use the template: ${(e as Error).message}`, 'error'));
       return;
     }
@@ -207,6 +214,7 @@ export function NewBoardDialog() {
       s.addBoard(b, s.project.activeBoardId);
       requestAnimationFrame(() => window.dispatchEvent(new Event('spread:fit')));
     }
+    consumeStarter();
     close();
   };
 

@@ -73,6 +73,8 @@ interface State {
   /** Modal currently open. */
   modal: null | 'export' | 'preview' | 'arrange' | 'shortcuts' | 'new-board' | 'claude' | 'brands' | 'library';
   leftTab: 'layers' | 'photos';
+  /** The Home screen covers the editor (desktop app). */
+  homeOpen: boolean;
   /** The Claude side panel is open. */
   chatOpen: boolean;
   /** Notes pinned on the canvas. Outside `project` on purpose: no undo, no board copies, no exports. */
@@ -208,6 +210,7 @@ export const useStore = create<State>((set, get) => {
   fontsVersion: 0,
   filePath: null,
   dirty: false,
+  homeOpen: false,
   toasts: [],
   modal: null,
   leftTab: 'photos',

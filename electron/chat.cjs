@@ -136,9 +136,10 @@ function env() {
 }
 
 /** Spread's MCP server, run by Electron as Node so it works without node on PATH. */
-function mcpConfig() {
+function mcpConfig(key) {
   const server = app.isPackaged ? path.join(process.resourcesPath, 'connector', 'server', 'index.mjs') : path.join(ROOT, 'mcp', 'server.mjs');
-  return JSON.stringify({ mcpServers: { spread: { command: process.execPath, args: [server], env: { ELECTRON_RUN_AS_NODE: '1' } } } });
+  // SPREAD_PROJECT ties this Claude's edits to its own project, whichever tab is in front.
+  return JSON.stringify({ mcpServers: { spread: { command: process.execPath, args: [server], env: { ELECTRON_RUN_AS_NODE: '1', SPREAD_PROJECT: key } } } });
 }
 
 async function start(c) {
@@ -155,7 +156,7 @@ async function start(c) {
     '--include-partial-messages',
     '--replay-user-messages',
     '--permission-prompt-tool', 'stdio',
-    '--mcp-config', mcpConfig(),
+    '--mcp-config', mcpConfig(c.key),
     '--allowedTools', ALLOWED.join(','),
     '--disallowedTools', DISALLOWED.join(','),
     '--append-system-prompt', SYSTEM,

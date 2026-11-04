@@ -45,7 +45,7 @@ async function rpc(method, params = {}, timeoutMs = 120_000) {
   try {
     res = await fetch(`http://127.0.0.1:${port}/rpc`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${token}`, 'x-spread-client': clientName() },
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${token}`, 'x-spread-client': clientName(), ...(process.env.SPREAD_PROJECT ? { 'x-spread-project': encodeURIComponent(process.env.SPREAD_PROJECT) } : {}) },
       body: JSON.stringify({ method, params }),
       signal: AbortSignal.timeout(timeoutMs),
     });
@@ -181,7 +181,7 @@ ${COORDS}`,
 
 // Safety hints on every tool, so clients can ask less often: looking is read-only, and only a few
 // tools can lose work (deleting rows or layers, replacing the open project).
-const READ_ONLY_TOOLS = new Set(['spread_list_library', 'spread_guide', 'spread_get_state', 'spread_list_boards', 'spread_get_feedback', 'spread_render_overview', 'spread_render_slides', 'spread_list_email_templates', 'spread_email_html', 'spread_list_fonts', 'spread_lint', 'spread_pdf_text', 'spread_list_brands', 'spread_get_brand']);
+const READ_ONLY_TOOLS = new Set(['spread_list_projects', 'spread_list_library', 'spread_guide', 'spread_get_state', 'spread_list_boards', 'spread_get_feedback', 'spread_render_overview', 'spread_render_slides', 'spread_list_email_templates', 'spread_email_html', 'spread_list_fonts', 'spread_lint', 'spread_pdf_text', 'spread_list_brands', 'spread_get_brand']);
 const DESTRUCTIVE_TOOLS = new Set(['spread_delete_board', 'spread_delete_nodes', 'spread_new_project', 'spread_open_project']);
 function tool(name, config, cb) {
   const readOnly = READ_ONLY_TOOLS.has(name);
@@ -733,10 +733,20 @@ tool(
 );
 
 tool(
+  'spread_list_projects',
+  {
+    title: 'List projects',
+    description: 'Lists every project on the Home page: name, path, kinds, board count, folder and last change. Use it to find past work to open or borrow ideas from.',
+    inputSchema: {},
+  },
+  passthrough('list_projects'),
+);
+
+tool(
   'spread_open_project',
   {
     title: 'Open project',
-    description: 'Opens a .spread project file (absolute path), replacing the current document. Unsaved changes in the app are discarded — check with the user first if they were editing.',
+    description: 'Opens a .spread project file (absolute path) in its own tab. Other open projects stay as they are, and they save themselves.',
     inputSchema: { path: z.string() },
     annotations: { destructiveHint: true },
   },
@@ -748,7 +758,7 @@ tool(
   {
     title: 'New project',
     description:
-      'Starts a blank project (one carousel board of 3 portrait slides, empty tray). If the open project has unsaved changes this fails unless discard: true — save_project first, or confirm with the user before discarding their work.',
+      'Starts a blank project in a new tab (one carousel board of 3 portrait slides, empty tray). Other open projects stay as they are.',
     inputSchema: {
       name: z.string().optional().describe('Project name (used for export file names)'),
       discard: z.boolean().optional().describe('Discard unsaved changes in the open project'),

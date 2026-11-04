@@ -3,6 +3,8 @@ import { fitVariations, useStore } from './store';
 import { findNode, findParent } from './tree';
 import { inAutoLayout } from './layout';
 import { saveProject, openProject } from './project';
+import { closeTab, cycleTab, switchTo, useWorkspace } from './workspace';
+import { openSwitcher } from './components/Switcher';
 import { pasteClipboard } from './clipboard';
 import { toggleBoldSelection } from './fonts';
 import type { Tool } from './types';
@@ -54,6 +56,8 @@ export const SHORTCUTS: [string, string][] = [
   ['Ctrl+S / Ctrl+Shift+S / Ctrl+O', 'Save / Save as / Open'],
   ['Ctrl+Shift+E', 'Export'],
   ['Ctrl+J', 'Show / hide the Claude panel'],
+  ['Ctrl+K', 'Go to a project'],
+  ['Ctrl+W, Ctrl+Tab, Ctrl+1–9', 'Close, next and jump to a project tab'],
   ['Esc', 'Deselect / exit crop or text'],
   ['?', 'This list'],
 ];
@@ -75,6 +79,33 @@ export function installShortcuts() {
       openProject();
       return;
     }
+    if (isElectron && !s.modal) {
+      if (mod && (k === 'k' || k === 't')) {
+        e.preventDefault();
+        openSwitcher();
+        return;
+      }
+      if (mod && k === 'w' && !e.shiftKey) {
+        e.preventDefault();
+        const { active } = useWorkspace.getState();
+        if (active && !s.homeOpen) void closeTab(active);
+        return;
+      }
+      if (e.ctrlKey && k === 'tab') {
+        e.preventDefault();
+        cycleTab(e.shiftKey ? -1 : 1);
+        return;
+      }
+      if (mod && !e.shiftKey && !e.altKey && /^[1-9]$/.test(k)) {
+        const { tabs } = useWorkspace.getState();
+        const t = k === '9' ? tabs[tabs.length - 1] : tabs[Number(k) - 1];
+        if (t) {
+          e.preventDefault();
+          void switchTo(t);
+        }
+        return;
+      }
+    }
     if (mod && k === 'j' && !e.shiftKey && !e.altKey && isElectron && !s.modal) {
       e.preventDefault();
       toggleChat();
@@ -92,7 +123,7 @@ export function installShortcuts() {
       return;
     }
     if (isTyping() || s.editingTextId) return;
-    if (s.modal) return;
+    if (s.modal || s.homeOpen) return;
 
     if (mod && k === 'z') {
       e.preventDefault();
