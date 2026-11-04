@@ -3,6 +3,11 @@
     "spread": {
       "command": "node",
       "args": ["mcp/server.mjs"]
+    },
+    "spread-dev": {
+      "command": "node",
+      "args": ["mcp/server.mjs"],
+      "env": { "SPREAD_HOME": "${HOME}/.spread-dev" }
     }
   }
 }

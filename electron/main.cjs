@@ -5,6 +5,7 @@ const fs = require('fs');
 const http = require('http');
 const os = require('os');
 const path = require('path');
+const { DEV, SPREAD_DIR } = require('./paths.cjs');
 const claude = require('./claude.cjs');
 const brands = require('./brands.cjs');
 const library = require('./library.cjs');
@@ -369,9 +370,9 @@ ipcMain.handle('chat-design-docs', (_e, dir) => chat.designDocs(dir));
 
 // ---------- automation bridge (local HTTP → renderer) ----------
 // Lets local tools (e.g. an MCP server for Claude Code) drive the app. Bound to 127.0.0.1,
-// guarded by a random bearer token written to ~/.spread/bridge.json, and refuses browser origins.
+// guarded by a random bearer token written to bridge.json in the Spread folder, and refuses browser origins.
 
-const BRIDGE_FILE = path.join(os.homedir(), '.spread', 'bridge.json');
+const BRIDGE_FILE = path.join(SPREAD_DIR, 'bridge.json');
 const BODY_LIMIT = 50 * 1024 * 1024;
 const RPC_TIMEOUT = 120_000;
 const bridgeToken = crypto.randomBytes(24).toString('hex');
@@ -473,6 +474,19 @@ function stopBridge() {
 }
 
 // ---------- lifecycle ----------
+
+// A dev copy is its own app: otherwise the installed Spread holds the single-instance lock and the
+// dev window quits on launch. It starts with a copy of the brands and library so there's real work
+// to test against; nothing is ever written back, and hosting logins are left behind.
+if (DEV) {
+  app.setName('Spread Dev');
+  app.setPath('userData', path.join(app.getPath('appData'), 'Spread Dev'));
+  for (const dir of ['brands', 'templates', 'references']) {
+    const from = path.join(os.homedir(), '.spread', dir);
+    const to = path.join(SPREAD_DIR, dir);
+    if (fs.existsSync(from) && !fs.existsSync(to)) fs.cpSync(from, to, { recursive: true });
+  }
+}
 
 if (!app.requestSingleInstanceLock()) {
   app.quit();

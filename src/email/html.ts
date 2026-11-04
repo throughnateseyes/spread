@@ -3,6 +3,7 @@ import type { LayoutMap } from '../layout';
 import { getAsset } from '../assets';
 import { needsLossless } from '../effects';
 import { isCustomPaint } from '../gradients';
+import { nodeLink, withTracking } from '../links';
 
 // Email compiler: turns an auto-layout node tree into inbox-safe HTML.
 //
@@ -13,8 +14,9 @@ import { isCustomPaint } from '../gradients';
 // td, photos are <img> tags pointing at hosted copies (rendered by images.ts), and anything
 // free-positioned (layout 'none') is flattened into one picture.
 //
+// A layer's `link` property links it and everything inside it (see links.ts).
 // Naming conventions read from layer names (tags are stripped from alt text):
-//   [link:https://…]  link this layer (and everything inside it)
+//   [link:https://…]  the older form of `link`, still read
 //   [alt:…]           alt text for a photo (otherwise the layer name is used)
 //   [button]          force a frame to compile as a bulletproof button
 //   [stack] / [nostack]  force a row to stack (or not) on phones
@@ -52,8 +54,10 @@ export interface EmailHtmlOptions {
   bodyBackground?: string;
   /** CSS font-family value (with fallbacks) for a Spread font family. */
   fontStack?: (family: string) => string;
-  /** Extra links by node id (wins over [link:…] tags in names). */
+  /** Extra links by node id (wins over the layers' own links). */
   links?: Record<string, string>;
+  /** Tags added to every web link ("utm_source=x&utm_campaign=y"). */
+  tracking?: string;
   /** 'light' (default) asks clients not to recolour; 'light dark' lets them. */
   colorScheme?: 'light' | 'light dark';
   lang?: string;
@@ -232,9 +236,14 @@ class Compiler {
     return (this.opts.fontStack ?? defaultFontStack)(family);
   }
 
+  /** The layer's own link as it will ship, tracking tags included. */
+  ownHref(n: SceneNode): string | undefined {
+    const url = this.opts.links?.[n.id] ?? nodeLink(n);
+    return url ? withTracking(url, this.opts.tracking) : undefined;
+  }
+
   hrefFor(n: SceneNode, env: Env): string | null {
-    const own = this.opts.links?.[n.id] ?? parseNameTags(n.name).link;
-    return own ?? env.href;
+    return this.ownHref(n) ?? env.href;
   }
 
   noteHref(href: string, label: string) {
@@ -467,7 +476,7 @@ class Compiler {
       const s = this.textStyle(t, env).filter(
         (x) => !x.startsWith('line-height') && !x.startsWith('mso-line') && !x.startsWith('text-align') && !base.includes(x),
       );
-      const href = this.opts.links?.[t.id] ?? parseNameTags(t.name).link ?? rowHref;
+      const href = this.ownHref(t) ?? rowHref;
       if (href) {
         this.noteHref(href, t.text);
         if (t.decoration === 'none') s.push('text-decoration:none');
@@ -621,7 +630,7 @@ class Compiler {
       }
     }
     if (f.layout !== 'none' && texts.length === 1 && kids.length === 1) {
-      const linked = !!(this.opts.links?.[f.id] ?? tags.link);
+      const linked = !!this.ownHref(f);
       if (named || (linked && f.fill)) return { text: texts[0], bg: f.fill, radius: f.radius, stroke: f.stroke, strokeWidth: f.strokeWidth };
     }
     if (named) {
@@ -644,9 +653,9 @@ class Compiler {
 
   button(f: FrameNode, b: Box, env: Env, place: Place, parts: NonNullable<ReturnType<Compiler['buttonParts']>>): string {
     const tags = parseNameTags(f.name);
-    let href = this.opts.links?.[f.id] ?? tags.link ?? this.opts.links?.[parts.text.id] ?? parseNameTags(parts.text.name).link ?? env.href;
+    let href = this.ownHref(f) ?? this.ownHref(parts.text) ?? env.href;
     if (!href) {
-      this.warn(`Button “${parts.text.text.trim() || tags.clean}” has no link. Add [link:https://…] to its layer name.`, 'btnhref:' + f.id);
+      this.warn(`Button “${parts.text.text.trim() || tags.clean}” has no link. Select it and add one in the Link section.`, 'btnhref:' + f.id);
       href = '#';
     }
     this.noteHref(href, parts.text.text);

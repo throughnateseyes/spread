@@ -5,10 +5,10 @@
 const crypto = require('crypto');
 const { app, shell } = require('electron');
 const fs = require('fs');
-const os = require('os');
 const path = require('path');
 
-const ROOT = path.join(os.homedir(), '.spread');
+const { SPREAD_DIR } = require('./paths.cjs');
+const ROOT = SPREAD_DIR;
 const INDEX = path.join(ROOT, 'projects.json');
 const THUMBS = path.join(ROOT, 'thumbs');
 const BACKUPS = path.join(ROOT, 'backups');

@@ -25,7 +25,7 @@ npm install
 npm run app        # build + open the desktop app
 ```
 
-While developing, `npm run dev` gives hot reload. `npm run web` runs it in a browser tab only, without native file dialogs or the Claude bridge.
+While developing, `npm run dev` gives hot reload. It runs as a separate app, Spread Dev, with its own data in `~/.spread-dev` (seeded once with a copy of your brands and library), so it can stay open beside an installed Spread without touching your real projects. In this repo, the `spread-dev` MCP server drives the dev copy and `spread` drives the installed app. `npm run web` runs it in a browser tab only, without native file dialogs or the Claude bridge.
 
 To build an installer, run `npm run dist:win` (NSIS installer plus a portable `.exe` in `release/`). Run `npm run dist:mac` on a Mac to get a `.dmg`; macOS builds have to be made on macOS.
 

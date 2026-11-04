@@ -1,6 +1,7 @@
 {
   "version": "0.0.1",
   "configurations": [
-    { "name": "spread-web", "runtimeExecutable": "npm", "runtimeArgs": ["run", "web"], "port": 5173 }
+    { "name": "spread-web", "runtimeExecutable": "npm", "runtimeArgs": ["run", "web"], "port": 5173 },
+    { "name": "spread-dev", "runtimeExecutable": "npm", "runtimeArgs": ["run", "dev"], "port": 5173 }
   ]
 }

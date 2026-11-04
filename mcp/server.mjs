@@ -23,8 +23,10 @@ console.log = console.error;
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_DIR = resolve(HERE, '..');
-const BRIDGE_FILE = join(homedir(), '.spread', 'bridge.json');
-const APP_FILE = join(homedir(), '.spread', 'app.json');
+// SPREAD_HOME points this server at a dev copy of the app (see electron/paths.cjs).
+const SPREAD_DIR = process.env.SPREAD_HOME || join(homedir(), '.spread');
+const BRIDGE_FILE = join(SPREAD_DIR, 'bridge.json');
+const APP_FILE = join(SPREAD_DIR, 'app.json');
 const NOT_RUNNING = `Spread isn't running. Call spread_launch, or ask the user to open the Spread app.`;
 
 class BridgeError extends Error {}
@@ -140,11 +142,11 @@ const boardId = z.string().optional().describe(BOARD_ID_DESC);
 const COLORS = `COLORS: '#RRGGBB' or '#RRGGBBAA'. Text 'fill' is a color string. Shape/frame 'fill' is a Paint: {kind:'solid', color} or {kind:'linear', angle (deg), from, to, grain?} (gradient — great for darkening a photo behind text), {kind:'radial', cx, cy (0-1), radius (1 = the longer side), from, to, grain?}, or {kind:'mesh', points:[{x, y (0-1), color}, ...2-6], softness (0-1), grain?} (colors melting together). grain is 0-1; 0.2-0.4 keeps a gradient from looking digital. Angle is CSS-style, the direction the gradient runs from 'from' to 'to': 0 = to top, 90 = to right, 180 = to bottom, 270 = to left. A scrim that darkens toward the bottom of a slide is {kind:'linear', angle:180, from:'#00000000', to:'#000000B3'}.`;
 
 const NODE_SPEC = `NODE SPEC fields (all optional except type):
-- common: key (stable role name, see KEYS), name, x, y, w, h, rotation (deg), opacity (0–1), visible, locked, sizingH/sizingV ('fixed'|'hug'|'fill'; 'fill' only inside auto layout; 'hug' for text and auto layout frames), shadow {enabled, color, x, y, blur}.
+- common: key (stable role name, see KEYS), name, link (email boards: the URL this layer and everything inside it goes to; null removes it), x, y, w, h, rotation (deg), opacity (0–1), visible, locked, sizingH/sizingV ('fixed'|'hug'|'fill'; 'fill' only inside auto layout; 'hug' for text and auto layout frames), shadow {enabled, color, x, y, blur}.
 - text: text (use \\n for line breaks), fontFamily (call spread_list_fonts; bundled: 'Inter Variable', 'DM Sans Variable', 'Space Grotesk Variable', 'Archivo Variable', 'Playfair Display Variable', 'Fraunces Variable', 'DM Serif Display', 'Instrument Serif', 'Bebas Neue'), fontWeight (100–900; default 600, so always set it for body copy), italic, fontSize (px), lineHeight (multiplier, e.g. 1.1), letterSpacing (percent of size, Figma-style, e.g. -2), align ('left'|'center'|'right'|'justify'), fill (color), uppercase, decoration ('none'|'underline'|'line-through'). Text hugs its content by default; set sizingH:'fixed' and w to wrap at a width.
 - image: assetId (from spread_get_state photos / spread_import_photos; null = empty placeholder), fit ('fill' crops to cover | 'fit'), crop {zoom ≥1, cx, cy} (focal point 0–1), radius, flipX, flipY, adjust {brightness, contrast, saturation} (each -1..1), effects (array, run in order, non-destructive, omitted fields use defaults): [{ type:'dither', pattern 'ordered'|'diffusion'|'noise', size (cell in layer px, 1-24), levels (2-8), mode 'duotone'|'photo', ink, paper, enabled, name }, { type:'grain', amount 0-1, size (1-8), enabled, name }, { type:'blur', mode 'even'|'progressive', amount (radius in layer px, 1-120), direction 'top'|'bottom'|'left'|'right' (side the blur grows towards), start 0-0.9 (how much stays sharp), enabled, name }]. Send the whole array when changing it, stroke, strokeWidth.
 - rect / ellipse: fill (Paint), stroke, strokeWidth, radius, backdropBlur (blurs what's behind it, layer px 0-120; needs a see-through fill, e.g. '#FFFFFF33').
-- frame: fill (Paint|null), radius, clip, stroke, strokeWidth, backdropBlur, layout ('none'|'row'|'column' = auto layout), gap, padding (number, {x,y} or {t,r,b,l}; default 0), alignItems ('start'|'center'|'end'), justify ('start'|'center'|'end'|'between'), children (NodeSpec[]).`;
+- frame: fill (Paint|null; default null, so a frame is see-through until you give it one), radius, clip, stroke, strokeWidth, backdropBlur, layout ('none'|'row'|'column' = auto layout), gap (default 0), padding (number, {x,y} or {t,r,b,l}; default 0), alignItems ('start'|'center'|'end'), justify ('start'|'center'|'end'|'between'), children (NodeSpec[]).`;
 
 const KEYS = `KEYS: any node may carry key (a stable role name). Unlike ids, keys survive board duplication, so the same layer has the same key on every variation row. Give important layers keys like headline, subhead, address, price, cta, scrim-1, photo-1… so you can restyle the same layer across rows in one call (spread_make_variants changes, update/delete by key).`;
 
@@ -181,7 +183,7 @@ ${COORDS}`,
 
 // Safety hints on every tool, so clients can ask less often: looking is read-only, and only a few
 // tools can lose work (deleting rows or layers, replacing the open project).
-const READ_ONLY_TOOLS = new Set(['spread_list_projects', 'spread_list_library', 'spread_guide', 'spread_get_state', 'spread_list_boards', 'spread_get_feedback', 'spread_render_overview', 'spread_render_slides', 'spread_list_email_templates', 'spread_email_html', 'spread_list_fonts', 'spread_lint', 'spread_pdf_text', 'spread_list_brands', 'spread_get_brand']);
+const READ_ONLY_TOOLS = new Set(['spread_list_links', 'spread_list_projects', 'spread_list_library', 'spread_guide', 'spread_get_state', 'spread_list_boards', 'spread_get_feedback', 'spread_render_overview', 'spread_render_slides', 'spread_list_email_templates', 'spread_email_html', 'spread_list_fonts', 'spread_lint', 'spread_pdf_text', 'spread_list_brands', 'spread_get_brand']);
 const DESTRUCTIVE_TOOLS = new Set(['spread_delete_board', 'spread_delete_nodes', 'spread_new_project', 'spread_open_project']);
 function tool(name, config, cb) {
   const readOnly = READ_ONLY_TOOLS.has(name);
@@ -251,7 +253,10 @@ tool(
     description: `Returns one board (the active one, or boardId): boardId, kind, note, name, slideWidth, slideHeight, slideCount, background, slides [{index, background}], layout grid, selection (node ids the user has selected on the active board), the full node tree (every stored prop plus \`box\` {x,y,w,h} = resolved absolute strip coordinates, and children for frames), the photo tray [{id, name, width, height, usedCount}], and boards[] (every board: id, index, name, kind, note, active, slideCount, nodeCount). Call this first and again whenever you need fresh ids or positions (the user may have edited by hand). When the user says "this", "the selected text", "this row", etc., call this and treat the current selection / active board as what they mean (pass no boardId, so you read the board they are on). Read it BEFORE anything that switches boards — switching (another boardId, render_overview) clears the selection.
 ${BOARDS}
 ${COORDS}`,
-    inputSchema: { boardId },
+    inputSchema: {
+      boardId,
+      detail: z.enum(['full', 'outline']).optional().describe("'outline' trims the node tree to id, key, name, type, box, text (first 60 characters), link and children: use it to find layers on a big board, then 'full' (the default) when you need their props."),
+    },
     annotations: { readOnlyHint: true },
   },
   passthrough('get_state'),
@@ -260,6 +265,40 @@ ${COORDS}`,
 // ---------------------------------------------------------------------------
 // Boards (rows of variations)
 // ---------------------------------------------------------------------------
+
+tool(
+  'spread_list_links',
+  {
+    title: 'List every link on a board',
+    description: "Lists every linked layer on a board, top to bottom: { tracking, needAttention, links: [{ id, key, name, type, url, shipsAs (url with tracking), issue }] }. issue is null, 'empty', 'placeholder' (still a {{TOKEN}}) or 'invalid'. Fix links with spread_update_nodes { updates: [{ id, link }] }.",
+    inputSchema: { boardId },
+  },
+  passthrough('list_links'),
+);
+
+tool(
+  'spread_wrap_nodes',
+  {
+    title: 'Wrap layers in a frame',
+    description: "Wraps existing layers in a new frame without rebuilding them; they keep their ids, keys and content. Pass ids and/or keys of layers that share a parent. layout 'row' or 'column' makes it auto layout, ordered by position (omit to pick from their arrangement); 'none' makes a plain frame that keeps them where they are. The frame starts with no fill, gap 0 and padding 0; set those and any other frame props here. Auto layout ignores the layers' old spacing, so pass gap. Returns { id, wrapped }.",
+    inputSchema: {
+      boardId,
+      ids: z.array(z.string()).optional(),
+      keys: z.array(z.string()).optional(),
+      layout: z.enum(['none', 'row', 'column']).optional(),
+      gap: z.number().optional(),
+      padding: z.union([z.number(), z.object({}).passthrough()]).optional(),
+      fill: z.any().optional().describe('Paint, a color string, or null.'),
+      name: z.string().optional(),
+      key: z.string().optional(),
+      alignItems: z.enum(['start', 'center', 'end']).optional(),
+      justify: z.enum(['start', 'center', 'end', 'between']).optional(),
+      radius: z.number().optional(),
+      link: z.string().optional(),
+    },
+  },
+  passthrough('wrap_nodes'),
+);
 
 tool(
   'spread_list_boards',
@@ -331,7 +370,7 @@ tool(
   'spread_update_board',
   {
     title: 'Rename board / edit note / set status',
-    description: "Sets a board's name, note, status, and for email boards the subject and preheader (boardId, default the active board). Update the note whenever you change a variation's direction so it still describes what the row shows. status: 'picked' | 'rejected' | null. The user normally sets status (Ctrl+Enter / Ctrl+Backspace); set it yourself only when they tell you to (\"go with C\" → picked). Returns { boards }.",
+    description: "Sets a board's name, note, status, and for email boards the subject, preheader and link tracking (boardId, default the active board). Update the note whenever you change a variation's direction so it still describes what the row shows. status: 'picked' | 'rejected' | null. The user normally sets status (Ctrl+Enter / Ctrl+Backspace); set it yourself only when they tell you to (\"go with C\" → picked). Returns { boards }.",
     inputSchema: {
       boardId,
       name: z.string().optional(),
@@ -340,6 +379,7 @@ tool(
       statusReason: z.string().nullable().optional().describe('Why the user picked or rejected it, in their words. Normally the user sets this in the row header.'),
       subject: z.string().optional().describe('Email boards: the subject line (under ~60 characters; also the HTML title).'),
       preheader: z.string().optional().describe('Email boards: the inbox preview text after the subject (40–90 characters, not repeating the subject).'),
+      tracking: z.string().optional().describe('Email boards: tags added to every web link at export, e.g. "utm_source=newsletter&utm_campaign=october". Layers keep their plain URLs; tags a URL already has, mailto:, tel:, placeholders and unsubscribe links are left alone. "" clears it.'),
     },
   },
   passthrough('update_board'),
@@ -603,14 +643,14 @@ tool(
 // Email boards (e-blasts)
 // ---------------------------------------------------------------------------
 
-const EMAIL = `EMAIL BOARDS: kind 'email', 600px wide, height grows with content. One root auto-layout column frame whose children are sections (frames named "Section / …"). Edit with the normal node tools (spread_update_nodes by id/key; spread_add_nodes with parentId = a section or the root). Facts in template copy are {{TOKENS}} — replace every one with real values (export warns about leftovers). Layer-name tags the compiler reads: [link:URL] (makes the layer a link), [alt:…] (image alt text), [button], [stack]/[nostack] (row frames stack on phones or not), [raster] (flatten to a picture). Images must be on public URLs: export with host: 'wordpress' when the user has connected WordPress (Spread uploads them and fills in the URLs); otherwise export once, the user uploads the image folder, then re-export with baseUrl. The board carries the subject and preview text (spread_update_board subject/preheader); export uses them.`;
+const EMAIL = `EMAIL BOARDS: kind 'email', 600px wide, height grows with content. One root auto-layout column frame whose children are sections (frames named "Section / …"). Edit with the normal node tools (spread_update_nodes by id/key; spread_add_nodes with parentId = a section or the root). Facts in template copy are {{TOKENS}} — replace every one with real values (export warns about leftovers). Set a layer's link with the link prop on spread_add_nodes / spread_update_nodes, and check them all with spread_list_links. Tracking tags for every link go on the board (spread_update_board tracking). Older [link:URL] name tags still work; setting link replaces them. Layer-name tags the compiler reads: [alt:…] (image alt text), [button], [stack]/[nostack] (row frames stack on phones or not), [raster] (flatten to a picture). Images must be on public URLs: export with host: 'wordpress' when the user has connected WordPress (Spread uploads them and fills in the URLs); otherwise export once, the user uploads the image folder, then re-export with baseUrl. The board carries the subject and preview text (spread_update_board subject/preheader); export uses them.`;
 
 const emailOpts = {
   baseUrl: z.string().optional().describe('Public folder URL the exported images will live at; image src = baseUrl + file name.'),
   urls: z.record(z.string()).optional().describe('Per-image URL overrides: { nodeId: url }.'),
   title: z.string().optional().describe("HTML <title> (default: the board's subject, else its name)."),
   preheader: z.string().optional().describe("Inbox preview text after the subject, 40–90 chars (default: the board's preheader)."),
-  links: z.record(z.string()).optional().describe('Link overrides: { nodeId: href } (otherwise [link:URL] in layer names).'),
+  links: z.record(z.string()).optional().describe("Link overrides for this export only: { nodeId: href } (otherwise each layer's own link)."),
 };
 
 tool(

@@ -86,10 +86,52 @@ export async function registerImage(input: Blob, rawName: string, id = uid()): P
   return meta;
 }
 
+const fontRanges = new Map<string, [number, number]>();
+
+/** The weights an uploaded variable font can draw, or undefined for a single-weight font. */
+export const fontWeightRange = (family: string) => fontRanges.get(family);
+
+/**
+ * Finds a variable font's weight range by drawing it: a variable font lays down more ink as the
+ * weight rises and stops changing past the ends of its axis. Works for every format, WOFF2 included.
+ */
+async function variableWeightRange(data: ArrayBuffer): Promise<[number, number] | null> {
+  const family = `spread-probe-${uid()}`;
+  const face = new FontFace(family, data.slice(0), { weight: '1 1000' });
+  try {
+    await face.load();
+    document.fonts.add(face);
+    const canvas = document.createElement('canvas');
+    canvas.width = 480;
+    canvas.height = 96;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
+    const weights = [100, 200, 300, 400, 500, 600, 700, 800, 900];
+    const ink = weights.map((w) => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.font = `${w} 64px "${family}"`;
+      ctx.fillText('Hamburg', 0, 72);
+      const px = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+      let sum = 0;
+      for (let i = 3; i < px.length; i += 4) sum += px[i];
+      return sum;
+    });
+    const moved = weights.filter((_, i) => i < weights.length - 1 && ink[i] !== ink[i + 1]);
+    return moved.length ? [moved[0], moved[moved.length - 1] + 100] : null;
+  } catch {
+    return null;
+  } finally {
+    document.fonts.delete(face);
+  }
+}
+
 /** Registers a font file under a CSS family name derived from the file name. */
 export async function registerFont(blob: Blob, name: string, id = uid(), family?: string): Promise<AssetMeta> {
   const fam = family ?? name.replace(FONT_EXT, '').replace(/[-_]+/g, ' ').trim();
-  const face = new FontFace(fam, await blob.arrayBuffer());
+  const data = await blob.arrayBuffer();
+  const range = await variableWeightRange(data);
+  if (range) fontRanges.set(fam, range);
+  // Without a declared range the browser treats a variable font as one weight and never moves its axis.
+  const face = new FontFace(fam, data, range ? { weight: `${range[0]} ${range[1]}` } : undefined);
   await face.load();
   document.fonts.add(face);
   const meta: AssetMeta = { id, name, kind: 'font', mime: blob.type || guessMime(name), width: 0, height: 0, family: fam };

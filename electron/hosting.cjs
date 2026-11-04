@@ -5,10 +5,10 @@
 // pictures that changed go up; old URLs are never overwritten, so sent emails keep working.
 const { safeStorage } = require('electron');
 const fs = require('fs');
-const os = require('os');
 const path = require('path');
 
-const FILE = path.join(os.homedir(), '.spread', 'hosting.json');
+const { SPREAD_DIR } = require('./paths.cjs');
+const FILE = path.join(SPREAD_DIR, 'hosting.json');
 
 function load() {
   try {

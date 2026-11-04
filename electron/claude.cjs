@@ -13,7 +13,8 @@ const path = require('path');
 
 const HOME = os.homedir();
 const IS_WIN = process.platform === 'win32';
-const APP_FILE = path.join(HOME, '.spread', 'app.json');
+const { SPREAD_DIR } = require('./paths.cjs');
+const APP_FILE = path.join(SPREAD_DIR, 'app.json');
 const ROOT = path.join(__dirname, '..');
 
 let lastClient = null;

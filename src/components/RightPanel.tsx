@@ -2,6 +2,7 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { MOD, useLayout, useStore } from '../store';
 import { absoluteBox, inAutoLayout, type LayoutMap } from '../layout';
 import { findNode, findParent, pathTo } from '../tree';
+import { LINK_ISSUE_TEXT, collectLinks, linkIssue, nodeLink, normaliseLink, setNodeLink } from '../links';
 import { getAsset } from '../assets';
 import { colorBytes } from '../effects';
 import { EffectsSection } from './EffectsSection';
@@ -36,6 +37,7 @@ import {
   IconGapV,
   IconImage,
   IconItalic,
+  IconLink,
   IconLetterSpacing,
   IconLineHeight,
   IconMinus,
@@ -145,6 +147,87 @@ function InboxSection() {
   );
 }
 
+/** Every link on the email in one place, and the tracking tags they all share. */
+function LinksSection() {
+  const doc = useStore((s) => s.doc);
+  const select = useStore((s) => s.select);
+  const links = useMemo(() => collectLinks(doc.nodes), [doc.nodes]);
+  const open = links.filter((l) => l.issue).length;
+  const setTracking = (tracking: string) => useStore.getState().updateBoard(doc.id, { email: { ...doc.email, tracking } });
+  return (
+    <Section title="Links" actions={open > 0 ? <span className="link-count warn">{open} to fix</span> : undefined}>
+      {links.length === 0 && <p className="link-empty">Select a layer to give it a link.</p>}
+      {links.length > 0 && (
+        <ul className="link-list">
+          {links.map((l) => (
+            <li key={l.id}>
+              <button className={`link-row ${l.issue ? 'warn' : ''}`} title={l.issue ? LINK_ISSUE_TEXT[l.issue] : l.url} onClick={() => select([l.id])}>
+                <span className="link-row-name ellipsis">{l.name}</span>
+                <span className="link-row-url ellipsis">{l.issue ? LINK_ISSUE_TEXT[l.issue] : l.url.replace(/^https?:\/\/(www\.)?/, '')}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <label className="inbox-field">
+        <span className="inbox-label">Tracking tags</span>
+        <div className="field">
+          <input value={doc.email?.tracking ?? ''} placeholder="utm_source=…&utm_campaign=…" spellCheck={false} onChange={(e) => setTracking(e.target.value)} />
+        </div>
+      </label>
+    </Section>
+  );
+}
+
+/** The link on the selected layers. Email only: nothing else exports links. */
+function LinkSection({ sel, upd }: { sel: SceneNode[]; upd: (fn: (n: SceneNode) => void, key?: string) => void }) {
+  const nodes = useStore((s) => s.doc.nodes);
+  const value = same(sel, (n) => nodeLink(n));
+  const on = value !== undefined;
+  const mixed = value === 'mixed';
+  const url = mixed || value === undefined ? '' : value;
+  const issue = on && !mixed ? linkIssue(url) : null;
+  const set = (v: string | null, key?: string) => upd((n) => setNodeLink(n, v), key);
+  // A link on a frame covers everything inside it, so say so rather than offer an empty field.
+  const inherited = !on && sel.length === 1 ? pathTo(nodes, sel[0].id).slice(0, -1).reverse().map((id) => findNode(nodes, id)!).find((p) => nodeLink(p)) : undefined;
+  return (
+    <Section
+      title="Link"
+      actions={
+        on ? (
+          <IconButton className="small" title="Remove link" onClick={() => set(null)}>
+            <IconMinus size={D} />
+          </IconButton>
+        ) : (
+          <IconButton className="small" title="Add link" onClick={() => set('')}>
+            <IconPlus size={D} />
+          </IconButton>
+        )
+      }
+    >
+      {on && (
+        <>
+          <div className="field">
+            <IconLink size={D} />
+            <input
+              value={url}
+              placeholder={mixed ? 'Mixed' : 'https://…'}
+              spellCheck={false}
+              onChange={(e) => set(e.target.value, 'link')}
+              onBlur={(e) => {
+                const next = normaliseLink(e.target.value);
+                if (next !== e.target.value) set(next, 'link');
+              }}
+            />
+          </div>
+          {issue && <p className="link-issue">{LINK_ISSUE_TEXT[issue]}</p>}
+        </>
+      )}
+      {inherited && <p className="link-empty">Linked through {inherited.name.replace(/\s*\[[^\]]*\]/g, '').trim()}.</p>}
+    </Section>
+  );
+}
+
 function DocumentPanel() {
   const doc = useStore((s) => s.doc);
   const change = useStore((s) => s.change);
@@ -204,6 +287,7 @@ function DocumentPanel() {
       )}
 
       {email && <InboxSection />}
+      {email && <LinksSection />}
 
       <Section title="Background">
         <ColorField value={doc.background} onChange={(c, k) => change((d) => void (d.background = c), k ?? 'doc-bg')} />
@@ -364,7 +448,7 @@ function SelectionPanel({ sel }: { sel: SceneNode[] }) {
         title={
           <span className="selection-head-title">
             {TitleIcon && <TitleIcon size={D} />}
-            <span className="ellipsis">{single?.name && single.name !== TYPE_LABEL[single.type] ? single.name : title}</span>
+            <span className="ellipsis">{single?.name && single.name !== TYPE_LABEL[single.type] ? single.name.replace(/\s*\[[^\]]*\]/g, '').trim() || title : title}</span>
           </span>
         }
         actions={
@@ -391,6 +475,7 @@ function SelectionPanel({ sel }: { sel: SceneNode[] }) {
       {type === 'image' && <ImageSection sel={sel as ImageNode[]} geo={geo} upd={upd} doc={doc} />}
       {(type === 'rect' || type === 'ellipse') && <ShapeSection sel={sel} upd={upd} />}
       {type === 'frame' && <FrameSection sel={sel as FrameNode[]} upd={upd} />}
+      {doc.kind === 'email' && <LinkSection sel={sel} upd={upd} />}
       <AppearanceSection sel={sel} upd={upd} />
       <ShadowSection sel={sel} upd={upd} />
     </>

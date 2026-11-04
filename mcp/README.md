@@ -8,7 +8,7 @@ Lets Claude (the Claude desktop app, Claude Code, or any MCP client) drive the r
 Claude ──stdio──> mcp/server.mjs ──HTTP (127.0.0.1, bearer token)──> Spread app bridge ──> canvas
 ```
 
-When the Spread app starts, it writes `~/.spread/bridge.json` (`{ port, token, pid }`). The MCP server re-reads that file on every call, so restarting the app is fine. The bridge listens on localhost only. The app also writes `~/.spread/app.json` (how to start it), which `spread_launch` uses, so the server can live anywhere.
+When the Spread app starts, it writes `~/.spread/bridge.json` (`~/.spread-dev/` for `npm run dev`; set `SPREAD_HOME` to point the server at either) (`{ port, token, pid }`). The MCP server re-reads that file on every call, so restarting the app is fine. The bridge listens on localhost only. The app also writes `~/.spread/app.json` (how to start it), which `spread_launch` uses, so the server can live anywhere.
 
 ## Setup
 
@@ -33,7 +33,9 @@ Every tool carries MCP safety hints: looking tools are marked read-only, and onl
 | --- | --- |
 | `spread_launch` | Start the app if it isn't running |
 | `spread_guide` | The design workflow and quality bar for a medium (`document`, `carousel`, `eblast`); the same text as the skills. Also offered as the prompts `spread-document`, `spread-carousel`, `spread-eblast` |
-| `spread_get_state` | One board: slides, node tree with absolute boxes, selection, photo tray, plus the list of all boards |
+| `spread_get_state` | One board: slides, node tree with absolute boxes, selection, photo tray, plus the list of all boards. `detail: 'outline'` trims the tree to ids, names and boxes |
+| `spread_list_links` | Every link on a board, with empty, placeholder and invalid ones flagged |
+| `spread_wrap_nodes` | Wrap existing layers in a frame or auto layout frame without rebuilding them |
 | `spread_import_photos` | Import files or folders (images and fonts) by absolute path |
 | `spread_arrange` | Lay photos across slides: `one-per-slide`, `panorama`, `collage`, `brick`; `slides` sets the slide count |
 | `spread_add_nodes` | Add text, image, rect, ellipse or frame layers (auto layout supported) |

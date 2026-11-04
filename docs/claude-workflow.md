@@ -151,4 +151,4 @@ In WordPress, open **Users → Profile → Application Passwords**, name one "Sp
 - **Save as reference** (a row's ⋯ menu) keeps a design you rate highly, with a line on what makes it good. Claude opens your references before designing something similar and holds new work to them. This works for carousels and pages too.
 - **Spread menu → Library…** lists both, with Show in Finder and Delete. They live in `~/.spread/templates` and `~/.spread/references`.
 
-Edit the email on the canvas like any other row. To change a link or alt text by hand, rename the layer: the `[link:…]` and `[alt:…]` tags in layer names are what the export reads.
+Edit the email on the canvas like any other row. To change a link by hand, select the layer and use the Link section in the right panel; with nothing selected, the same panel lists every link on the email and takes tracking tags for all of them. To change alt text, rename the layer: the `[alt:…]` tag in its name is what the export reads.

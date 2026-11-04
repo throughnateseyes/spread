@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
-const file = join(homedir(), '.spread', 'bridge.json');
+const file = join(process.env.SPREAD_HOME || join(homedir(), '.spread'), 'bridge.json');
 let info;
 try {
   info = JSON.parse(await readFile(file, 'utf8'));

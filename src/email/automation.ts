@@ -29,6 +29,7 @@ function compile(p: Params, hosted: Record<string, string> = {}) {
     preheader: p.preheader ?? doc.email?.preheader ?? '',
     imageUrl: (nodeId, fileName) => urls[nodeId] ?? (base ? joinUrl(base, fileName) : fileName),
     links: p.links,
+    tracking: doc.email?.tracking,
   });
   return { doc, root, layout, result };
 }

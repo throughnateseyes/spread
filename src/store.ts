@@ -116,6 +116,8 @@ interface State {
   reorder: (id: string, dir: 'up' | 'down' | 'top' | 'bottom') => void;
   moveNode: (id: string, targetParentId: string | null, index: number) => void;
   wrapSelectionInFrame: (auto: boolean) => void;
+  /** Wraps sibling layers in a new frame and returns its id. `patch` overrides the frame's defaults. */
+  wrapNodes: (ids: string[], auto: boolean, patch?: Partial<FrameNode>) => string | null;
   ungroup: (id: string) => void;
   addAssets: (metas: AssetMeta[]) => void;
   removeTrayAssets: (ids: string[]) => void;
@@ -407,12 +409,15 @@ export const useStore = create<State>((set, get) => {
     });
   },
   wrapSelectionInFrame: (auto) => {
+    const id = get().wrapNodes(get().selection, auto);
+    if (id) set({ selection: [id] });
+  },
+  wrapNodes: (sel, auto, patch) => {
     const s = get();
-    const sel = s.selection;
-    if (!sel.length) return;
+    if (!sel.length) return null;
     const layout = getLayout(s.doc.nodes, s.fontsVersion);
     const first = locate(s.doc.nodes, sel[0]);
-    if (!first) return;
+    if (!first) return null;
     // Only wrap siblings of the first selected node.
     const siblings = sel.filter((id) => first.list.some((n) => n.id === id));
     const boxes = siblings.map((id) => layout.get(id)!).filter(Boolean);
@@ -432,6 +437,7 @@ export const useStore = create<State>((set, get) => {
       frame.sizingH = 'hug';
       frame.sizingV = 'hug';
     }
+    Object.assign(frame, patch);
     s.change((d) => {
       const loc = locate(d.nodes, sel[0])!;
       const picked = loc.list
@@ -456,7 +462,7 @@ export const useStore = create<State>((set, get) => {
       for (let i = loc.list.length - 1; i >= 0; i--) if (siblings.includes(loc.list[i].id)) loc.list.splice(i, 1);
       loc.list.splice(at, 0, f as FrameNode);
     });
-    set({ selection: [frame.id] });
+    return frame.id;
   },
   ungroup: (id) => {
     const s = get();

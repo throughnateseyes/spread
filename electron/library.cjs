@@ -4,10 +4,10 @@
 // files, so the library can be backed up or shared, and Claude can read a reference's images.
 const { shell } = require('electron');
 const fs = require('fs');
-const os = require('os');
 const path = require('path');
 
-const ROOT = path.join(os.homedir(), '.spread');
+const { SPREAD_DIR } = require('./paths.cjs');
+const ROOT = SPREAD_DIR;
 const KINDS = new Set(['templates', 'references']);
 const ID = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/;
 

@@ -47,6 +47,8 @@ interface BaseNode {
   sizingH: Sizing;
   sizingV: Sizing;
   shadow?: Shadow;
+  /** Where the layer (and everything inside it) links in an email. '' = added but not filled in. */
+  link?: string;
 }
 
 export interface ImageAdjust {
@@ -241,6 +243,8 @@ export interface EmailMeta {
   subject?: string;
   /** The preview line inboxes show after the subject. */
   preheader?: string;
+  /** Tags added to every web link at export ("utm_source=x&utm_campaign=y"). The layers keep their plain URLs. */
+  tracking?: string;
 }
 
 export interface Project {

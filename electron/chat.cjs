@@ -17,7 +17,8 @@ const { findClaude } = require('./claude.cjs');
 
 const HOME = os.homedir();
 const IS_WIN = process.platform === 'win32';
-const DIR = path.join(HOME, '.spread', 'chats');
+const { SPREAD_DIR } = require('./paths.cjs');
+const DIR = path.join(SPREAD_DIR, 'chats');
 const ROOT = path.join(__dirname, '..');
 
 const ALLOWED = ['mcp__spread', 'Read', 'Glob', 'Grep', 'Task', 'Agent', 'Skill', 'TodoWrite'];

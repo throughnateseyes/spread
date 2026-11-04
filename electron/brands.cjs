@@ -2,10 +2,10 @@
 // fonts/. Plain files, so a kit can be backed up, shared or checked into a repo.
 const { shell } = require('electron');
 const fs = require('fs');
-const os = require('os');
 const path = require('path');
 
-const ROOT = path.join(os.homedir(), '.spread', 'brands');
+const { SPREAD_DIR } = require('./paths.cjs');
+const ROOT = path.join(SPREAD_DIR, 'brands');
 const ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
 
 const dirOf = (id) => {

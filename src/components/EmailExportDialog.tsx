@@ -109,6 +109,7 @@ export default function EmailExportDialog({ onClose, root, nodes }: Props) {
   const [copied, setCopied] = useState(false);
   const [done, setDone] = useState<{ folder: string; count: number } | null>(null);
   const projectName = useStore((s) => s.project.name);
+  const tracking = useStore((s) => s.doc.email?.tracking);
   const dest = useExportFolder(projectName);
 
   useEffect(() => {
@@ -124,9 +125,9 @@ export default function EmailExportDialog({ onClose, root, nodes }: Props) {
   const imageUrl = urlFor(hosted);
 
   const compiled = useMemo(
-    () => buildEmailHtml(root, layout, { title: htmlTitle, preheader, imageUrl }),
+    () => buildEmailHtml(root, layout, { title: htmlTitle, preheader, imageUrl, tracking }),
     // imageUrl closes over mode / baseUrl / urls / hosted
-    [root, layout, htmlTitle, preheader, mode, baseUrl, urls, hosted],
+    [root, layout, htmlTitle, preheader, tracking, mode, baseUrl, urls, hosted],
   );
   const images = compiled.images;
   const imagesKey = images.map((i) => `${i.nodeId}:${i.fileName}:${i.width}x${i.height}:${i.matte}`).join('|');
@@ -157,9 +158,10 @@ export default function EmailExportDialog({ onClose, root, nodes }: Props) {
     return buildEmailHtml(root, layout, {
       title: htmlTitle,
       preheader,
+      tracking,
       imageUrl: (id, f) => rendered.dataUrls[id] ?? imageUrl(id, f),
     }).html;
-  }, [rendered, compiled.html, root, layout, htmlTitle, preheader, mode, baseUrl, urls, hosted]);
+  }, [rendered, compiled.html, root, layout, htmlTitle, preheader, tracking, mode, baseUrl, urls, hosted]);
 
   const renderPictures = async () => {
     setError(null);
@@ -241,7 +243,7 @@ export default function EmailExportDialog({ onClose, root, nodes }: Props) {
     try {
       const r = await hostEmailImages(files, setBusy);
       setHosted(r.urls);
-      const html = buildEmailHtml(root, layout, { title: htmlTitle, preheader, imageUrl: urlFor(r.urls) }).html;
+      const html = buildEmailHtml(root, layout, { title: htmlTitle, preheader, tracking, imageUrl: urlFor(r.urls) }).html;
       await copyHtml(html);
       setUploadNote(
         `${r.uploaded ? `Uploaded ${r.uploaded} picture${r.uploaded === 1 ? '' : 's'}` : 'No new pictures to upload'}${r.reused ? ` · ${r.reused} already on the site` : ''}. HTML copied.`,

@@ -14,6 +14,7 @@ import '@fontsource/dm-serif-display/400-italic.css';
 import '@fontsource/instrument-serif/400.css';
 import '@fontsource/instrument-serif/400-italic.css';
 import '@fontsource/bebas-neue/400.css';
+import { fontWeightRange } from './assets';
 import { useStore } from './store';
 import { findNode, walk } from './tree';
 import type { Doc, TextNode } from './types';
@@ -87,7 +88,9 @@ const FONT_WEIGHTS: Record<string, number[]> = {
 /** Weights available for a family, or null when unknown (installed fonts: offer them all). */
 export function fontWeights(family: string, doc: Doc): number[] | null {
   if (FONT_WEIGHTS[family]) return FONT_WEIGHTS[family];
-  // An uploaded font is one file registered as its own family: a single weight.
+  const range = fontWeightRange(family);
+  if (range) return span(range[0], range[1]);
+  // Any other uploaded font is one file registered as its own family: a single weight.
   if (uploadedFonts(doc).some((f) => f.family === family)) return [400];
   return null;
 }

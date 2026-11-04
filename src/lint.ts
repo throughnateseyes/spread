@@ -1,5 +1,7 @@
 import { measureText, textLines, type LayoutMap } from './layout';
 import { absoluteBoxes } from './render';
+import { fontWeights } from './fonts';
+import { LINK_ISSUE_TEXT, collectLinks } from './links';
 import { walk } from './tree';
 import type { Box, Brand, Doc, Paint, SceneNode, TextNode } from './types';
 
@@ -48,7 +50,9 @@ const contains = (outer: Box, p: { x: number; y: number }) => p.x >= outer.x && 
 
 export function lintBoard(doc: Doc, layout: LayoutMap, brand: Brand | null = null): { issues: LintIssue[]; summary: string } {
   const issues: LintIssue[] = [];
+  lintWeights(doc, issues);
   if (doc.kind === 'email') {
+    lintLinks(doc, issues);
     if (brand) lintBrand(doc, brand, 'px', issues);
     return summarize(issues, 'Email layout is checked by spread_email_html.');
   }
@@ -235,6 +239,23 @@ const fontKey = (f: string) =>
     .toLowerCase()
     .replace(/\s+variable$/, '')
     .trim();
+
+/** Text set in a weight its font doesn't have won't look the way the number says, with no other sign. */
+function lintWeights(doc: Doc, issues: LintIssue[]) {
+  walk(doc.nodes, (n) => {
+    if (n.type !== 'text' || !n.visible) return;
+    const weights = fontWeights(n.fontFamily, doc);
+    if (!weights || weights.includes(n.fontWeight)) return;
+    const message = `${n.fontFamily} has no ${n.fontWeight} weight. Available: ${weights.join(', ')}.`;
+    issues.push({ severity: 'warn', rule: 'font-weight', message, page: null, ids: [n.id], keys: [n.key ?? null] });
+  });
+}
+
+function lintLinks(doc: Doc, issues: LintIssue[]) {
+  for (const l of collectLinks(doc.nodes)) {
+    if (l.issue) issues.push({ severity: 'warn', rule: 'link', message: `Link on "${l.name}": ${LINK_ISSUE_TEXT[l.issue]}.`, page: null, ids: [l.id], keys: [l.key] });
+  }
+}
 
 /**
  * Brand checks: every font is a brand font, every color is in the palette (scrims of pure black or

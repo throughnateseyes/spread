@@ -1,7 +1,8 @@
 import { emailHandlers } from './email/automation';
 import { createFromTemplate, libraryForClaude, saveReference, saveTemplate } from './library';
 import { useStore, currentLayout, boardFrames, asClaude, fitVariations } from './store';
-import { cloneBoard, cloneWithNewIds, collectAssetIds, findNode, makeDoc, makeDocumentBoard, makeEmailBoard, makeFrame, makeImage, makeProject, makeShape, makeText, uid, walk } from './tree';
+import { collectLinks, nodeLink, setNodeLink, withTracking } from './links';
+import { cloneBoard, cloneWithNewIds, collectAssetIds, findNode, findParent, makeDoc, makeDocumentBoard, makeEmailBoard, makeFrame, makeImage, makeProject, makeShape, makeText, uid, walk } from './tree';
 import { absoluteBoxes } from './render';
 import { makeEffect } from './effects';
 import { normalizePaint } from './gradients';
@@ -15,7 +16,7 @@ import { clearAutosave, loadProjectBytes, safeFileName, serializeProject } from 
 import { focusForClaude, newProjectOfKind, openInTab, projectsForClaude } from './workspace';
 import { BUNDLED_FONTS, SYSTEM_FONTS, uploadedFonts } from './fonts';
 import { homeDir, isElectron, listFiles, onAutomationRequest, picturesDir, readFile, respondAutomation, writeFiles, writeToPath } from './platform';
-import { PAGE_PRESETS, type AssetMeta, type Doc, type ImageNode, type Paint, type SceneNode } from './types';
+import { PAGE_PRESETS, type AssetMeta, type Doc, type FrameNode, type ImageNode, type Paint, type SceneNode } from './types';
 
 // Renderer side of the local automation bridge (electron/main.cjs ⇄ mcp/server.mjs).
 // Each method takes JSON params and returns JSON. Coordinates are strip-space px.
@@ -86,9 +87,9 @@ function fromSpec(spec: Params): SceneNode {
       n = makeShape(spec.type, x, y, spec.w ?? 200, spec.h ?? 200);
       break;
     case 'frame':
-      n = makeFrame(x, y, spec.w ?? 400, spec.h ?? 400);
-      // Frames made by the app's Frame tool get comfortable padding; frames made by spec start at 0 so spacing is exactly what was asked for.
-      if (spec.padding === undefined) n.padding = { t: 0, r: 0, b: 0, l: 0 };
+      // The app's Frame tool gives a white card with comfortable spacing. Frames made by spec start
+      // empty, so they only look the way the spec asks for.
+      n = makeFrame(x, y, spec.w ?? 400, spec.h ?? 400, { fill: null, gap: 0, padding: { t: 0, r: 0, b: 0, l: 0 } });
       if (spec.layout && spec.layout !== 'none') {
         if (spec.w === undefined && spec.sizingH === undefined) n.sizingH = 'hug';
         if (spec.h === undefined && spec.sizingV === undefined) n.sizingV = 'hug';
@@ -126,11 +127,29 @@ function serialiseNodes(nodes: SceneNode[]): unknown[] {
   return rec(nodes);
 }
 
+/** The tree with only what's needed to find a layer: ids, names and boxes, not every stored prop. */
+function outlineNodes(nodes: SceneNode[]): unknown[] {
+  const abs = absoluteBoxes(nodes, currentLayout());
+  const rec = (list: SceneNode[]): unknown[] =>
+    list.map((n) => ({
+      id: n.id,
+      ...(n.key ? { key: n.key } : {}),
+      name: n.name,
+      type: n.type,
+      box: roundBox(abs.get(n.id)),
+      ...(n.type === 'text' ? { text: n.text.length > 60 ? `${n.text.slice(0, 60)}…` : n.text } : {}),
+      ...(n.visible ? {} : { hidden: true }),
+      ...(nodeLink(n) !== undefined ? { link: nodeLink(n) } : {}),
+      ...(n.type === 'frame' ? { children: rec(n.children) } : {}),
+    }));
+  return rec(nodes);
+}
+
 function roundBox(b?: { x: number; y: number; w: number; h: number }) {
   return b ? { x: Math.round(b.x), y: Math.round(b.y), w: Math.round(b.w), h: Math.round(b.h) } : null;
 }
 
-function summary() {
+function summary(detail: 'full' | 'outline' = 'full') {
   const s = useStore.getState();
   const d = s.doc;
   const used = new Map<string, number>();
@@ -154,7 +173,7 @@ function summary() {
     grid: d.grid,
     selection: s.selection,
     filePath: s.filePath,
-    nodes: serialiseNodes(d.nodes),
+    nodes: detail === 'outline' ? outlineNodes(d.nodes) : serialiseNodes(d.nodes),
     photos: d.assetOrder.map((id) => {
       const a = d.assets[id];
       return { id, name: a?.name, width: a?.width, height: a?.height, usedCount: used.get(id) ?? 0 };
@@ -195,7 +214,7 @@ const PROJECT_METHODS = new Set(['list_projects', 'list_library', 'create_from_t
 const ACTIVATES = new Set(['create_email', 'activate_board', 'create_board', 'duplicate_board', 'select', 'export_slides']);
 
 /** Methods that only look: they leave the active board and selection exactly as the user had them. */
-const READ_ONLY = new Set(['list_projects', 'list_library', 'list_brands', 'get_brand', 'lint', 'email_html', 'list_email_templates', 'get_feedback', 'get_state', 'list_boards', 'render_slides', 'render_overview', 'list_fonts', 'unused_photos']);
+const READ_ONLY = new Set(['list_links', 'list_projects', 'list_library', 'list_brands', 'get_brand', 'lint', 'email_html', 'list_email_templates', 'get_feedback', 'get_state', 'list_boards', 'render_slides', 'render_overview', 'list_fonts', 'unused_photos']);
 
 function requireBoard(id: unknown): string {
   const p = useStore.getState().project;
@@ -314,7 +333,13 @@ function applyChanges(d: Doc, changes: Params[], idMap: Map<string, string>): st
 }
 
 const handlers: Record<string, (p: Params) => Promise<unknown> | unknown> = {
-  get_state: () => summary(),
+  get_state: (p) => summary(p.detail === 'outline' ? 'outline' : 'full'),
+
+  list_links() {
+    const d = useStore.getState().doc;
+    const links = collectLinks(d.nodes).map((l) => ({ ...l, shipsAs: withTracking(l.url, d.email?.tracking) }));
+    return { tracking: d.email?.tracking ?? null, links, needAttention: links.filter((l) => l.issue).length };
+  },
 
   // ---------- boards (rows of variations) ----------
   list_boards: () => ({ activeBoardId: useStore.getState().project.activeBoardId, boards: boardsSummary() }),
@@ -441,10 +466,10 @@ const handlers: Record<string, (p: Params) => Promise<unknown> | unknown> = {
       if (p.status === null) patch.statusReason = null;
     }
     if (typeof p.statusReason === 'string' || p.statusReason === null) patch.statusReason = p.statusReason;
-    if (typeof p.subject === 'string' || typeof p.preheader === 'string') {
+    if (typeof p.subject === 'string' || typeof p.preheader === 'string' || typeof p.tracking === 'string') {
       const b = useStore.getState().project.boards.find((x) => x.id === id)!;
-      if (b.kind !== 'email') throw new Error('subject and preheader are for email boards.');
-      patch.email = { ...b.email, ...(typeof p.subject === 'string' ? { subject: p.subject } : {}), ...(typeof p.preheader === 'string' ? { preheader: p.preheader } : {}) };
+      if (b.kind !== 'email') throw new Error('subject, preheader and tracking are for email boards.');
+      patch.email = { ...b.email, ...(typeof p.subject === 'string' ? { subject: p.subject } : {}), ...(typeof p.preheader === 'string' ? { preheader: p.preheader } : {}), ...(typeof p.tracking === 'string' ? { tracking: p.tracking } : {}) };
     }
     useStore.getState().updateBoard(id, patch);
     return { boards: boardsSummary() };
@@ -598,11 +623,26 @@ const handlers: Record<string, (p: Params) => Promise<unknown> | unknown> = {
         if (n.type === 'text' && 'w' in u && !('sizingH' in u) && n.sizingH === 'hug') patch.sizingH = 'fixed';
         if (n.type === 'frame' && Array.isArray(u.children)) n.children = u.children.map(fromSpec);
         Object.assign(n, patch);
+        if ('link' in u) setNodeLink(n, u.link ?? null);
         updated++;
         }
       }
     });
     return { updated, missing };
+  },
+
+  wrap_nodes(p) {
+    const s = useStore.getState();
+    const { ids: wanted = [], keys = [], ...spec } = p as Params;
+    const nodes: SceneNode[] = [...(wanted as string[]).map((id) => findNode(s.doc.nodes, id)).filter((n): n is SceneNode => !!n), ...(keys as string[]).flatMap((k) => findByKey(s.doc.nodes, k))];
+    if (!nodes.length) throw new Error('Pass ids or keys of the layers to wrap.');
+    const ids = [...new Set(nodes.map((n) => n.id))];
+    const parents = new Set(ids.map((id) => findParent(s.doc.nodes, id)?.id ?? null));
+    if (parents.size > 1) throw new Error('These layers have different parents. Wrap layers that sit side by side in the same frame.');
+    const auto = spec.layout !== 'none';
+    delete spec.boardId;
+    const id = s.wrapNodes(ids, auto, normalisePatch('frame', { gap: 0, padding: 0, ...spec }) as Partial<FrameNode>);
+    return { id, wrapped: ids.length };
   },
 
   delete_nodes(p) {

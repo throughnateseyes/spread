@@ -21,12 +21,13 @@ Spread has **email boards**: rows on the same canvas as the carousels, 600px wid
 - Edit with the normal tools: `spread_get_state { boardId }` for ids, `spread_update_nodes` to change text and props, `spread_add_nodes { parentId }` to add inside a section (or the root), `spread_delete_nodes` to remove a section.
 - Template copy marks every fact as a `{{TOKEN}}` (`{{ADDRESS}}`, `{{BEDS}}`, `{{LISTING_URL}}`, `{{HERO_ALT}}`…). Tokens appear in **text** and in **layer names**.
 - The compiler reads tags in **layer names**:
-  - `[link:URL]` makes the layer a link (the CTA is `See the listing > [link:{{LISTING_URL}}]`).
+  - `[link:URL]` in a template layer's name is its link (the CTA is `See the listing > [link:{{LISTING_URL}}]`). Replace it with the `link` prop.
   - `[alt:…]` sets an image's alt text. Describe the content ("Sunny living room with bay windows"), not the file.
   - `[button]` marks a bulletproof button. The templates use text links instead.
   - `[stack]` / `[nostack]` decides whether a row frame stacks on phones.
   - `[raster]` flattens a frame into one picture. Avoid it for anything with words.
-- To change a link or alt text, rename the layer and keep the tag: `spread_update_nodes { updates: [{ id, name: 'CTA [link:https://example.com/…]' }] }`.
+- To set a link: `spread_update_nodes { updates: [{ id, link: 'https://example.com/…' }] }`. It clears any `[link:…]` tag from the name. `spread_list_links` shows every link and flags empty ones; run it before export. Tracking tags go on the board, once: `spread_update_board { tracking: 'utm_source=…&utm_campaign=…' }`.
+- To change alt text, rename the layer and keep the tag.
 
 ## Brand: the project's design system
 
