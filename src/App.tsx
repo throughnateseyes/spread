@@ -10,6 +10,7 @@ import ArrangeDialog from './components/ArrangeDialog';
 import RepeatDialog from './components/RepeatDialog';
 import StylesDialog from './components/StylesPanel';
 import EmailExportDialog from './components/EmailExportDialog';
+import InboxPreviewDialog from './components/InboxPreview';
 import PdfExportDialog from './components/PdfExportDialog';
 import ClaudeDialog from './components/ClaudeDialog';
 import BrandsDialog from './components/BrandsDialog';
@@ -96,6 +97,7 @@ export default function App() {
       {modal === 'library' && <LibraryDialog />}
       <SaveToLibraryDialog />
       {modal === 'preview' && <PreviewModal />}
+      {modal === 'inbox' && emailRoot && <InboxPreviewDialog root={emailRoot} onClose={close} />}
       {modal === 'arrange' && <ArrangeDialog />}
       {modal === 'repeat' && <RepeatDialog />}
       {modal === 'styles' && <StylesDialog />}

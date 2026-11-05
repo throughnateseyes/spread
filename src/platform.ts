@@ -113,6 +113,8 @@ export interface SpreadNative {
   reveal(path: string): Promise<void>;
   /** Prints self-contained HTML to a PDF (page size in inches). */
   printPdf(opts: { html: string; widthIn: number; heightIn: number }): Promise<Uint8Array>;
+  /** Photographs self-contained HTML in a hidden window, as a JPEG. */
+  renderHtml(opts: { html: string; width: number; height: number; maxHeight?: number }): Promise<Uint8Array>;
   setDirty(v: boolean): Promise<void>;
   /** The window is closing with unsaved work: save, then call flushed. */
   onFlushClose(cb: () => void): () => void;

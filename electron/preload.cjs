@@ -21,6 +21,7 @@ contextBridge.exposeInMainWorld('spreadNative', {
   listFiles: (paths, exts) => ipcRenderer.invoke('list-files', { paths, exts }),
   reveal: (path) => ipcRenderer.invoke('reveal', path),
   printPdf: (opts) => ipcRenderer.invoke('print-pdf', opts),
+  renderHtml: (opts) => ipcRenderer.invoke('render-html', opts),
   setDirty: (v) => ipcRenderer.invoke('set-dirty', v),
   onFlushClose: (cb) => {
     const listener = () => cb();

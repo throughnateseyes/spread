@@ -131,6 +131,11 @@ export default function TopBar() {
             <IconPreview size={ICON_DENSE} weight="fill" /> Preview
           </Button>
         )}
+        {kind === 'email' && (
+          <Button onClick={() => s().set({ modal: 'inbox' })} title="See it as an inbox will: desktop, phone, fallback fonts, images off">
+            <IconPreview size={ICON_DENSE} weight="fill" /> Preview
+          </Button>
+        )}
         <Button primary onClick={() => s().set({ modal: 'export' })} title={kind === 'document' ? 'Export PDF or images' : kind === 'email' ? 'Export HTML and images' : 'Export slides'} shortcut={`${MOD}+Shift+E`}>
           <IconExport size={ICON_DENSE} /> Export
         </Button>

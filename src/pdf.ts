@@ -45,7 +45,7 @@ function boxCss(n: SceneNode, b: Box) {
   return css;
 }
 
-function blobToDataUrl(b: Blob): Promise<string> {
+export function blobToDataUrl(b: Blob): Promise<string> {
   return new Promise((res, rej) => {
     const r = new FileReader();
     r.onload = () => res(r.result as string);
@@ -169,7 +169,7 @@ function fetchDataUrl(url: string) {
 const familyOf = (raw: string) => raw.replace(/["']/g, '').trim();
 
 /** @font-face rules for every family the board uses: bundled faces from the app's stylesheets, uploaded fonts from the asset registry. */
-async function fontFaceCss(families: Set<string>): Promise<string> {
+export async function fontFaceCss(families: Set<string>): Promise<string> {
   const out: string[] = [];
   for (const sheet of Array.from(document.styleSheets)) {
     let rules: CSSRuleList;

@@ -272,6 +272,25 @@ ipcMain.handle('print-pdf', async (_e, { html, widthIn, heightIn }) => {
   }
 });
 
+// Photographs self-contained HTML (an email preview) at a real viewport width, for Claude to look at.
+ipcMain.handle('render-html', async (_e, { html, width, height, maxHeight = 6000 }) => {
+  const tmp = path.join(os.tmpdir(), `spread-render-${process.pid}-${Date.now()}.html`);
+  await fs.promises.writeFile(tmp, html, 'utf8');
+  const h = Math.max(1, Math.min(height, maxHeight));
+  const pw = new BrowserWindow({ show: false, width, height: h, useContentSize: true, enableLargerThanScreen: true, webPreferences: { offscreen: true, sandbox: true } });
+  try {
+    await pw.loadFile(tmp);
+    await pw.webContents.executeJavaScript(
+      'document.fonts.ready.then(() => Promise.all([...document.images].map((i) => i.decode().catch(() => null)))).then(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))))',
+    );
+    const shot = await pw.webContents.capturePage({ x: 0, y: 0, width, height: h });
+    return new Uint8Array(shot.toJPEG(85));
+  } finally {
+    pw.destroy();
+    fs.promises.unlink(tmp).catch(() => {});
+  }
+});
+
 ipcMain.handle('reveal', async (_e, p) => {
   try {
     const st = await fs.promises.stat(p);

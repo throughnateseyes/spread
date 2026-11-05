@@ -63,6 +63,8 @@ export interface EmailHtmlOptions {
   lang?: string;
   /** Mobile breakpoint in px (default 600). */
   breakpoint?: number;
+  /** Preview only: draws each picture as the empty box a blocked image leaves, with its alt text. */
+  imagesOff?: boolean;
 }
 
 export interface EmailHtmlResult {
@@ -73,6 +75,8 @@ export interface EmailHtmlResult {
   placeholders: string[];
   /** UTF-8 size of `html`. */
   bytes: number;
+  /** Every font family the email asks for. */
+  fonts: string[];
 }
 
 // ---------- small helpers ----------
@@ -171,6 +175,20 @@ export function defaultFontStack(family: string): string {
   else tail = ['Arial', 'Helvetica', 'sans-serif'];
   const first = q(name);
   return [first, ...tail.filter((t) => t.replace(/'/g, '').toLowerCase() !== name.toLowerCase())].join(', ');
+}
+
+export const isWebSafe = (family: string) => WEB_SAFE.test(family);
+
+/** What inboxes really fall back to: the stack without a family they won't have. */
+export function fallbackStack(family: string): string {
+  const stack = defaultFontStack(family);
+  return isWebSafe(family) ? stack : stack.split(', ').slice(1).join(', ');
+}
+
+/** Alt text colour that reads on `bg`, since a blocked picture leaves its background showing. */
+function altInk(bg: string): string {
+  const [r8, g8, b8] = hex2(bg).rgb;
+  return 0.299 * r8 + 0.587 * g8 + 0.114 * b8 > 140 ? '#333333' : '#FFFFFF';
 }
 
 // ---------- compiler ----------
@@ -594,7 +612,7 @@ class Compiler {
     if (generic && n.type === 'image') {
       this.warn(`A photo has no alt text (layer “${tags.clean || 'Photo'}”). Rename the layer to describe what's in it, e.g. “Sunny living room with bay windows”.`, 'alt:' + n.id);
     }
-    if (generic) alt = n.type === 'image' ? '' : alt;
+    if (generic) alt = '';
     const ext = format === 'png' ? 'png' : 'jpg';
     const base = slug(tags.clean) || (n.type === 'image' ? 'photo' : n.type);
     const fileName = `${String(idx).padStart(2, '0')}-${base}.${ext}`;
@@ -608,7 +626,12 @@ class Compiler {
     const url = this.opts.imageUrl(im.nodeId, im.fileName);
     const margin = place.align === 'center' ? ';margin:0 auto' : place.align === 'right' ? ';margin:0 0 0 auto' : '';
     const cls = im.width >= 160 ? ' class="es-img"' : '';
-    let tag = `<img src="${escAttr(url)}" width="${im.width}" height="${im.height}" alt="${escapeHtml(im.alt)}"${cls} style="display:block;width:100%;max-width:${im.width}px;height:auto;border:0;outline:none;text-decoration:none${margin}">`;
+    // With images off the alt text takes this type, so it stays readable on dark sections.
+    const ink = altInk(env.bg);
+    const altType = `font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;color:${ink}`;
+    let tag = this.opts.imagesOff
+      ? `<div style="box-sizing:border-box;display:flex;align-items:center;justify-content:center;width:100%;max-width:${im.width}px;aspect-ratio:${im.width}/${Math.max(1, im.height)};overflow:hidden;padding:4px;text-align:center;border:1px dashed ${flatten(ink + '66', env.bg)};${altType}${margin}">${escapeHtml(im.alt)}</div>`
+      : `<img src="${escAttr(url)}" width="${im.width}" height="${im.height}" alt="${escapeHtml(im.alt)}"${cls} style="display:block;width:100%;max-width:${im.width}px;height:auto;border:0;outline:none;text-decoration:none;${altType}${margin}">`;
     if (href) {
       this.noteHref(href, im.alt);
       tag = `<a href="${escAttr(href)}" target="_blank" style="text-decoration:none">${tag}</a>`;
@@ -821,7 +844,7 @@ export function buildEmailHtml(root: FrameNode | SceneNode[], layout: LayoutMap,
   }
   const bytes = new TextEncoder().encode(html).length;
   if (bytes > GMAIL_CLIP_BYTES) c.warn(`The HTML is ${(bytes / 1024).toFixed(1)} KB. Gmail clips emails over about 102 KB, hiding the footer and unsubscribe link. Cut a section or simplify.`);
-  return { html, images: c.images, warnings: c.warnings, placeholders: tokens, bytes };
+  return { html, images: c.images, warnings: c.warnings, placeholders: tokens, bytes, fonts: [...c.fonts] };
 }
 
 /** The pictures an email will reference (same names buildEmailHtml would give them). */

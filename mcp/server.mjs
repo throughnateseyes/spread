@@ -173,7 +173,7 @@ NEW WORK: act as the user's senior designer and marketing lead. Call spread_guid
 BEFORE DESIGNING ANYTHING, call spread_guide with the medium (document = any page-based work, carousel, eblast) and follow it: it is the workflow and the quality bar (setup, the lint Floor, the Bar, directions, export). If a guide is already loaded as a skill, you don't need to call it.
 Quick post: spread_get_state → spread_import_photos(folder) → spread_arrange → spread_add_nodes (typography) → spread_render_slides (LOOK at the images) → spread_update_nodes to fix → spread_export_slides.
 Ideation ("give me 3 directions"): plan each direction's idea first, then build each as its own board (spread_create_board with a name and note, then spread_add_nodes with keyed layers) → spread_render_overview to self-review → present rows with a recommendation → wait for the user's pick. spread_make_variants copies one board: use it for takes within one direction ("push C further"), never to fake different directions.
-E-blast: spread_list_email_templates (the user's saved: templates first) → spread_create_email {template} → fill every {{TOKEN}} with spread_update_nodes → spread_update_board {subject, preheader} → spread_render_slides (look) → spread_email_html (fix warnings, stay under 100 KB) → spread_export_email {host: 'wordpress'} (or, without WordPress, export → user uploads → export again with baseUrl).
+E-blast: spread_list_email_templates (the user's saved: templates first) → spread_create_email {template} → fill every {{TOKEN}} with spread_update_nodes → spread_update_board {subject, preheader} → spread_render_slides (look) → spread_preview_email (the real HTML on desktop and phone; fix its checks) → spread_email_html (fix warnings, stay under 100 KB) → spread_export_email {host: 'wordpress'} (or, without WordPress, export → user uploads → export again with baseUrl).
 LIBRARY: the user's saved templates and references (spread_list_library). Before designing something new, look at the references of the same kind (Read their images) and follow what the user said makes them good. When the user loves a result, offer once to save it as a reference (spread_save_reference) or a template (spread_save_template).
 Follow-up turns: call spread_get_feedback FIRST, unless a <spread-context> block (Spread's own chat panel) shows nothing changed since your last turn (picked/rejected rows, current selection, hand edits). Never overwrite layers listed in userTouched without asking; leave rejected rows alone.
 When the user says "this", "the selected text" or "this row", the selection and activeBoardId from spread_get_feedback (or spread_get_state) are the referent. Rows are lettered A, B, C… from the top.
@@ -184,7 +184,7 @@ ${COORDS}`,
 
 // Safety hints on every tool, so clients can ask less often: looking is read-only, and only a few
 // tools can lose work (deleting rows or layers, replacing the open project).
-const READ_ONLY_TOOLS = new Set(['spread_list_styles', 'spread_list_links', 'spread_list_projects', 'spread_list_library', 'spread_guide', 'spread_get_state', 'spread_list_boards', 'spread_get_feedback', 'spread_render_overview', 'spread_render_slides', 'spread_list_email_templates', 'spread_email_html', 'spread_list_fonts', 'spread_lint', 'spread_pdf_text', 'spread_list_brands', 'spread_get_brand']);
+const READ_ONLY_TOOLS = new Set(['spread_preview_email', 'spread_list_styles', 'spread_list_links', 'spread_list_projects', 'spread_list_library', 'spread_guide', 'spread_get_state', 'spread_list_boards', 'spread_get_feedback', 'spread_render_overview', 'spread_render_slides', 'spread_list_email_templates', 'spread_email_html', 'spread_list_fonts', 'spread_lint', 'spread_pdf_text', 'spread_list_brands', 'spread_get_brand']);
 const DESTRUCTIVE_TOOLS = new Set(['spread_delete_board', 'spread_delete_nodes', 'spread_new_project', 'spread_open_project']);
 function tool(name, config, cb) {
   const readOnly = READ_ONLY_TOOLS.has(name);
@@ -708,7 +708,7 @@ tool(
 // Email boards (e-blasts)
 // ---------------------------------------------------------------------------
 
-const EMAIL = `EMAIL BOARDS: kind 'email', 600px wide, height grows with content. One root auto-layout column frame whose children are sections (frames named "Section / …"). Edit with the normal node tools (spread_update_nodes by id/key; spread_add_nodes with parentId = a section or the root). Facts in template copy are {{TOKENS}} — replace every one with real values (export warns about leftovers). For grids of similar cards (listings, events), build one card and fill the rest with spread_repeat. Name repeated type (Body, Section heading) with spread_save_styles so one change reaches every layer. Set a layer's link with the link prop on spread_add_nodes / spread_update_nodes, and check them all with spread_list_links. Tracking tags for every link go on the board (spread_update_board tracking). Older [link:URL] name tags still work; setting link replaces them. Layer-name tags the compiler reads: [alt:…] (image alt text), [button], [stack]/[nostack] (row frames stack on phones or not), [raster] (flatten to a picture). Images must be on public URLs: export with host: 'wordpress' when the user has connected WordPress (Spread uploads them and fills in the URLs); otherwise export once, the user uploads the image folder, then re-export with baseUrl. The board carries the subject and preview text (spread_update_board subject/preheader); export uses them.`;
+const EMAIL = `EMAIL BOARDS: kind 'email', 600px wide, height grows with content. One root auto-layout column frame whose children are sections (frames named "Section / …"). Edit with the normal node tools (spread_update_nodes by id/key; spread_add_nodes with parentId = a section or the root). Facts in template copy are {{TOKENS}} — replace every one with real values (export warns about leftovers). For grids of similar cards (listings, events), build one card and fill the rest with spread_repeat. Name repeated type (Body, Section heading) with spread_save_styles so one change reaches every layer. Set a layer's link with the link prop on spread_add_nodes / spread_update_nodes, and check them all with spread_list_links. Tracking tags for every link go on the board (spread_update_board tracking). Older [link:URL] name tags still work; setting link replaces them. Layer-name tags the compiler reads: [alt:…] (image alt text), [button], [stack]/[nostack] (row frames stack on phones or not), [raster] (flatten to a picture). Images must be on public URLs: export with host: 'wordpress' when the user has connected WordPress (Spread uploads them and fills in the URLs); otherwise export once, the user uploads the image folder, then re-export with baseUrl. The board carries the subject and preview text (spread_update_board subject/preheader); export uses them. spread_render_slides shows the canvas; spread_preview_email shows the real HTML on desktop and phone, with fallback fonts and with images off, so run it before export.`;
 
 const emailOpts = {
   baseUrl: z.string().optional().describe('Public folder URL the exported images will live at; image src = baseUrl + file name.'),
@@ -770,6 +770,31 @@ tool(
     annotations: { readOnlyHint: true },
   },
   passthrough('email_html'),
+);
+
+tool(
+  'spread_preview_email',
+  {
+    title: 'Preview email as an inbox shows it',
+    description: "Shows the compiled HTML of an email board (active, or boardId) the way inboxes will, unlike spread_render_slides, which shows the canvas. Lays it out at real widths (desktop 640, phone 375) and returns { subject, preheader, heights, checks: [{ id, level: ok|note|fix, title, detail }] } plus one picture per view. Checks cover the inbox line, sideways scrolling on phones, what the fallback fonts change, and what is lost with images off. views picks what to look at (default desktop and phone, fallback fonts, images on): fonts 'fallback' is what nearly everyone sees, 'design' only people with the font installed; images false draws each picture as the box a blocked image leaves, with its alt text. Fix every 'fix' check. One browser engine, not Outlook or Gmail themselves. Read-only.",
+    inputSchema: {
+      views: z
+        .array(z.object({ device: z.enum(['desktop', 'mobile']).optional(), fonts: z.enum(['fallback', 'design']).optional(), images: z.boolean().optional() }))
+        .max(6)
+        .optional(),
+      boardId,
+    },
+    annotations: { readOnlyHint: true },
+  },
+  handle(async (args) => {
+    const { images = [], ...r } = (await rpc('preview_email', args, 300_000)) ?? {};
+    const content = [{ type: 'text', text: JSON.stringify(r) }];
+    for (const img of images) {
+      content.push({ type: 'text', text: img.label });
+      content.push({ type: 'image', data: img.base64, mimeType: img.mime ?? 'image/jpeg' });
+    }
+    return { content };
+  }),
 );
 
 tool(

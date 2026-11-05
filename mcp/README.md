@@ -89,6 +89,7 @@ Rows are lettered A, B, C… by position. The user picks a row with Ctrl+Enter a
 | `spread_create_email` | New email row from a template (`listing-spotlight`, `newsletter`, `resident-notice`, `event`, `blank`) |
 | `spread_add_email_section` | Insert a section into an email row |
 | `spread_email_html` | Compile to inbox-safe HTML without writing files: size, warnings, image list |
+| `spread_preview_email` | See the real HTML as inboxes show it: desktop, phone, fallback fonts, images off, with checks and pictures |
 | `spread_export_email` | Write `email.html` plus images to a folder; re-export with `baseUrl` once the images are hosted |
 
 Coordinates are strip-space pixels, per board. Slide `i` spans `x ∈ [i*slideWidth, (i+1)*slideWidth)`. Anything that crosses `x = k*slideWidth` is split across slides, which is how the seamless effect works.

@@ -273,7 +273,7 @@ const PROJECT_METHODS = new Set(['list_styles', 'list_projects', 'list_library',
 const ACTIVATES = new Set(['create_email', 'activate_board', 'create_board', 'duplicate_board', 'select', 'export_slides']);
 
 /** Methods that only look: they leave the active board and selection exactly as the user had them. */
-const READ_ONLY = new Set(['list_styles', 'list_links', 'list_projects', 'list_library', 'list_brands', 'get_brand', 'lint', 'email_html', 'list_email_templates', 'get_feedback', 'get_state', 'list_boards', 'render_slides', 'render_overview', 'list_fonts', 'unused_photos']);
+const READ_ONLY = new Set(['preview_email', 'list_styles', 'list_links', 'list_projects', 'list_library', 'list_brands', 'get_brand', 'lint', 'email_html', 'list_email_templates', 'get_feedback', 'get_state', 'list_boards', 'render_slides', 'render_overview', 'list_fonts', 'unused_photos']);
 
 function requireBoard(id: unknown): string {
   const p = useStore.getState().project;

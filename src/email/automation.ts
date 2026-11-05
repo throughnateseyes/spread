@@ -1,7 +1,9 @@
 import { useStore, currentLayout } from '../store';
-import { homeDir, picturesDir, writeFiles } from '../platform';
+import { homeDir, native, picturesDir, writeFiles } from '../platform';
 import { safeFileName } from '../project';
+import { blobToDataUrl, fontFaceCss } from '../pdf';
 import { buildEmailHtml, collectEmailImages, joinUrl } from './html';
+import { fontSwaps, inboxChecks, inboxHtml, inboxMetrics, measureHtml, viewWidth, type InboxDevice, type InboxFonts, type InboxSource, type InboxView } from './preview';
 import { renderEmailImages } from './images';
 import { EMAIL_SECTIONS, EMAIL_TEMPLATES } from './templates';
 import { createEmailBoard, emailRootOf, insertEmailSection } from './boards';
@@ -32,6 +34,12 @@ function compile(p: Params, hosted: Record<string, string> = {}) {
     tracking: doc.email?.tracking,
   });
   return { doc, root, layout, result };
+}
+
+function base64(bytes: Uint8Array) {
+  let s = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(s);
 }
 
 function today() {
@@ -87,6 +95,38 @@ export const emailHandlers: Record<string, (p: Params) => Promise<unknown> | unk
       images: result.images.map((i) => ({ nodeId: i.nodeId, fileName: i.fileName, alt: i.alt, width: i.width, height: i.height })),
       html: result.html.length > max ? result.html.slice(0, max) + '\n<!-- …truncated -->' : result.html,
     };
+  },
+
+  /** The compiled email as an inbox shows it: checks always, pictures when the desktop app can take them. */
+  async preview_email(p) {
+    const { doc, root } = activeEmailRoot();
+    const layout = currentLayout();
+    const compiled = buildEmailHtml(root, layout, { title: '', imageUrl: (_id, f) => f, tracking: doc.email?.tracking });
+    const swaps = fontSwaps(compiled.fonts);
+    const fontCss = await fontFaceCss(new Set(swaps.map((s) => s.family)));
+    const views: InboxView[] = ((p.views as { device?: InboxDevice; fonts?: InboxFonts; images?: boolean }[] | undefined) ?? [{ device: 'desktop' }, { device: 'mobile' }]).map((v) => ({
+      device: v.device ?? 'desktop',
+      fonts: v.fonts ?? 'fallback',
+      images: v.images ?? true,
+    }));
+    const src: InboxSource = { root, layout, title: doc.email?.subject ?? '', preheader: doc.email?.preheader ?? '', tracking: doc.email?.tracking, pictures: {} };
+    const metrics = await inboxMetrics(src, fontCss, swaps.length > 0);
+    const checks = inboxChecks(src, src.title, compiled.images, compiled.fonts, metrics).map(({ view: _view, ...c }) => c);
+    const heights = { desktop: metrics.desktop.fallback.height, phone: metrics.mobile.fallback.height };
+    const base = { subject: doc.email?.subject ?? null, preheader: doc.email?.preheader ?? null, checks, heights };
+    if (!native) return { ...base, images: [], note: 'Pictures of the preview need the desktop app.' };
+    if (views.some((v) => v.images)) {
+      for (const f of await renderEmailImages(root, layout, compiled.images, 1)) src.pictures[f.nodeId] = await blobToDataUrl(f.blob);
+    }
+    const images = [];
+    for (const v of views) {
+      const html = inboxHtml(src, v, fontCss);
+      const width = viewWidth(v.device);
+      const { height } = await measureHtml(html, width);
+      const data = await native.renderHtml({ html, width, height });
+      images.push({ label: `${v.device === 'mobile' ? 'Phone' : 'Desktop'}, ${v.fonts === 'design' ? 'your fonts' : 'fallback fonts'}, images ${v.images ? 'on' : 'off'} (${width}×${height})`, base64: base64(data), mime: 'image/jpeg' });
+    }
+    return { ...base, images };
   },
 
   async export_email(p) {

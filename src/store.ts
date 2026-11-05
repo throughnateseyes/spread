@@ -73,7 +73,7 @@ interface State {
   dirty: boolean;
   toasts: Toast[];
   /** Modal currently open. */
-  modal: null | 'export' | 'preview' | 'arrange' | 'shortcuts' | 'new-board' | 'claude' | 'brands' | 'library' | 'repeat' | 'styles';
+  modal: null | 'export' | 'preview' | 'arrange' | 'shortcuts' | 'new-board' | 'claude' | 'brands' | 'library' | 'repeat' | 'styles' | 'inbox';
   leftTab: 'layers' | 'photos';
   /** The Home screen covers the editor (desktop app). */
   homeOpen: boolean;

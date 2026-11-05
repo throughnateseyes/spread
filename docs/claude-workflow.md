@@ -138,6 +138,8 @@ The flow:
 3. It renders the email to look at it, then compiles the HTML to check for warnings (missing alt text, dead links, size over Gmail's 102 KB clip).
 4. It exports with your WordPress connected: the images go to the media library and `email.html` points at them. Paste it into your email tool.
 
+**Preview** in the top bar shows the real HTML the way inboxes will: the inbox line, desktop and phone widths, fallback fonts and images off, with a short list of what changes. Claude gets the same view with `spread_preview_email`. It's one browser engine, not Outlook or Gmail themselves, so still send yourself a test.
+
 You can do the last step yourself: **Export → Upload to WordPress → Preview & export → Upload & copy HTML**. Pictures that haven't changed since the last upload are reused, and a changed picture gets a new file name, so emails you've already sent keep working.
 
 ### Connecting WordPress (once)

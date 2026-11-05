@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { IconArrowLeft as ArrowLeft, IconCheck as Check, IconCopy as Copy, IconDownload as Download, IconFolder as FolderOpen, IconImage as ImageIcon, IconLink as Link2, IconDesktop as Monitor, IconMobile as Smartphone, IconUpload as Upload, IconWarning as TriangleAlert } from '../ui/icons';
+import { IconArrowLeft as ArrowLeft, IconCheck as Check, IconCopy as Copy, IconDownload as Download, IconFolder as FolderOpen, IconImage as ImageIcon, IconLink as Link2, IconUpload as Upload, IconWarning as TriangleAlert } from '../ui/icons';
 import type { FrameNode, SceneNode } from '../types';
 import { computeLayout } from '../layout';
 import { getAsset } from '../assets';
@@ -11,6 +11,8 @@ import { renderEmailImages, type RenderedEmailImage } from '../email/images';
 import './email.css';
 import { useStore } from '../store';
 import { ExportFolderRow, useExportFolder } from './ExportFolder';
+import { InboxChecks, InboxStage, useInboxPreview } from './InboxPreview';
+import { blobToDataUrl } from '../pdf';
 
 // Email export: choose where the pictures will live (one base URL, or a URL per picture),
 // then render the pictures at 2x, preview the compiled HTML (desktop / phone), copy it, and
@@ -55,15 +57,6 @@ function lsJson<T>(k: string, fallback: T): T {
   }
 }
 
-function blobToDataUrl(b: Blob): Promise<string> {
-  return new Promise((res, rej) => {
-    const fr = new FileReader();
-    fr.onload = () => res(String(fr.result));
-    fr.onerror = () => rej(fr.error);
-    fr.readAsDataURL(b);
-  });
-}
-
 const BAD_HOST = /drive\.google\.com|docs\.google\.com|\bbox\.com|dropbox\.com|onedrive\.live\.com|1drv\.ms/i;
 
 function urlProblems(url: string): string | null {
@@ -102,7 +95,6 @@ export default function EmailExportDialog({ onClose, root, nodes }: Props) {
   const [hosted, setHosted] = useState<Record<string, string>>({});
   const [baseUrl, setBaseUrl] = useState(() => lsGet(K_BASE) ?? '');
   const [urls, setUrls] = useState<Record<string, string>>(() => lsJson<Record<string, string>>(K_URLS, {}));
-  const [device, setDevice] = useState<'desktop' | 'mobile'>('desktop');
   const [rendered, setRendered] = useState<{ files: RenderedEmailImage[]; dataUrls: Record<string, string>; warnings: string[]; key: string } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -152,16 +144,9 @@ export default function EmailExportDialog({ onClose, root, nodes }: Props) {
     return w;
   }, [images, mode, baseUrl, urls, wp]);
 
-  // Pictures for the preview (data URLs, so the sandboxed iframe can show them before upload).
-  const previewHtml = useMemo(() => {
-    if (!rendered) return compiled.html;
-    return buildEmailHtml(root, layout, {
-      title: htmlTitle,
-      preheader,
-      tracking,
-      imageUrl: (id, f) => rendered.dataUrls[id] ?? imageUrl(id, f),
-    }).html;
-  }, [rendered, compiled.html, root, layout, htmlTitle, preheader, tracking, mode, baseUrl, urls, hosted]);
+  // Pictures for the preview (data URLs, so the frame can show them before upload).
+  const pictures = useMemo(() => rendered?.dataUrls ?? {}, [rendered]);
+  const preview = useInboxPreview({ root, layout, title: title ?? '', preheader, tracking, pictures, imageUrl });
 
   const renderPictures = async () => {
     setError(null);
@@ -404,27 +389,10 @@ export default function EmailExportDialog({ onClose, root, nodes }: Props) {
     );
   }
 
-  const frameW = device === 'desktop' ? 600 : 375;
   return (
-    <Modal title="Export email" onClose={onClose} width={1000}>
+    <Modal title="Export email" onClose={onClose} width={1040}>
       <div className="em-review">
-        <div className="em-preview-col">
-          <div className="em-preview-bar">
-            <Segmented
-              className="em-device"
-              value={device}
-              options={[
-                { value: 'desktop', label: <Monitor size={14} />, title: 'Desktop (600px)' },
-                { value: 'mobile', label: <Smartphone size={14} />, title: 'Phone (375px)' },
-              ]}
-              onChange={setDevice}
-            />
-            <span className="muted">{busy ?? (rendered ? `${frameW}px wide` : 'Pictures not rendered')}</span>
-          </div>
-          <div className="em-preview-stage">
-            <iframe className="em-preview" title="Email preview" sandbox="" srcDoc={previewHtml} style={{ width: frameW }} />
-          </div>
-        </div>
+        <InboxStage p={preview} status={busy ?? (rendered ? null : 'Pictures not rendered')} />
 
         <div className="em-side">
           {sizeMeter}
@@ -442,6 +410,7 @@ export default function EmailExportDialog({ onClose, root, nodes }: Props) {
                 : 'No pictures'}
             </div>
           </div>
+          <InboxChecks p={preview} />
           {warningList}
           {error && <div className="hint em-error">{error}</div>}
           {uploadNote && (
