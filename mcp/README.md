@@ -37,6 +37,8 @@ Every tool carries MCP safety hints: looking tools are marked read-only, and onl
 | `spread_list_links` | Every link on a board, with empty, placeholder and invalid ones flagged |
 | `spread_wrap_nodes` | Wrap existing layers in a frame or auto layout frame without rebuilding them |
 | `spread_repeat` | Fill a grid from data: one card plus rows, with photos from links or files |
+| `spread_list_styles` | Text styles and spacing tokens, plus text that has no style yet |
+| `spread_save_styles` | Add or change named styles; every linked layer on every board follows |
 | `spread_import_photos` | Import files or folders (images and fonts) by absolute path |
 | `spread_arrange` | Lay photos across slides: `one-per-slide`, `panorama`, `collage`, `brick`; `slides` sets the slide count |
 | `spread_add_nodes` | Add text, image, rect, ellipse or frame layers (auto layout supported) |

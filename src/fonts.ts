@@ -86,6 +86,18 @@ const FONT_WEIGHTS: Record<string, number[]> = {
 };
 
 /** Weights available for a family, or null when unknown (installed fonts: offer them all). */
+export const WEIGHTS = [
+  { value: 100, label: 'Thin' },
+  { value: 200, label: 'Extra Light' },
+  { value: 300, label: 'Light' },
+  { value: 400, label: 'Regular' },
+  { value: 500, label: 'Medium' },
+  { value: 600, label: 'Semi Bold' },
+  { value: 700, label: 'Bold' },
+  { value: 800, label: 'Extra Bold' },
+  { value: 900, label: 'Black' },
+];
+
 export function fontWeights(family: string, doc: Doc): number[] | null {
   if (FONT_WEIGHTS[family]) return FONT_WEIGHTS[family];
   const range = fontWeightRange(family);

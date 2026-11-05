@@ -8,10 +8,11 @@ import { getAsset } from '../assets';
 import { colorBytes } from '../effects';
 import { EffectsSection } from './EffectsSection';
 import { GradientField } from './GradientField';
-import { BUNDLED_FONTS, SYSTEM_FONTS, fontWeights, isBold, nearestWeight, queryInstalledFonts, toggleBoldSelection, uploadedFonts, type FontOption } from '../fonts';
+import { BUNDLED_FONTS, SYSTEM_FONTS, WEIGHTS, fontWeights, isBold, nearestWeight, queryInstalledFonts, toggleBoldSelection, uploadedFonts, type FontOption } from '../fonts';
 import { pickFonts, pickReplacement } from '../importer';
 import { Button, ColorField, IconButton, NumberField, Row, Section, Segmented, Select, Slider, SwatchContext, Toggle, parseColor, toColor } from '../ui/controls';
 import { dotColors, resolveFamily, useActiveBrand } from '../brand';
+import { SpaceFields, StylesSection, TextStyleField } from './StylesPanel';
 import { Tooltip } from '../ui/Tooltip';
 import {
   ICON_DENSE,
@@ -329,6 +330,7 @@ function DocumentPanel() {
           {g.visible && <LayoutGridFields />}
         </Section>
       )}
+      <StylesSection />
     </>
   );
 }
@@ -639,18 +641,6 @@ function LayoutSection({ geo, upd }: { geo: Geo[]; upd: (fn: (n: SceneNode) => v
 
 // ---------------- text ----------------
 
-const WEIGHTS = [
-  { value: 100, label: 'Thin' },
-  { value: 200, label: 'Extra Light' },
-  { value: 300, label: 'Light' },
-  { value: 400, label: 'Regular' },
-  { value: 500, label: 'Medium' },
-  { value: 600, label: 'Semi Bold' },
-  { value: 700, label: 'Bold' },
-  { value: 800, label: 'Extra Bold' },
-  { value: 900, label: 'Black' },
-];
-
 let installedCache: FontOption[] = [];
 
 function TextSection({ sel, upd, doc }: { sel: TextNode[]; upd: (fn: (n: SceneNode) => void, key?: string) => void; doc: Doc }) {
@@ -715,6 +705,7 @@ function TextSection({ sel, upd, doc }: { sel: TextNode[]; upd: (fn: (n: SceneNo
         </>
       }
     >
+      <TextStyleField sel={sel} />
       <Select
         title="Font family"
         value={family as string}
@@ -1099,6 +1090,7 @@ function FrameSection({ sel, upd }: { sel: FrameNode[]; upd: (fn: (n: SceneNode)
             >
               {padIndividual ? 'Uniform padding' : 'Individual padding'}
             </button>
+            <SpaceFields sel={sel} fr={fr} />
           </>
         ) : (
           <div className="hint">Auto layout stacks children in a row or column with gap and padding, like Figma.</div>

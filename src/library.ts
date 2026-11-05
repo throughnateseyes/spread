@@ -7,6 +7,7 @@ import { renderBoardStripBase64, renderSlidesBase64 } from './exporter';
 import { native, type LibraryKind, type LibraryMeta } from './platform';
 import { currentLayout, useStore } from './store';
 import { cloneBoard, cloneWithNewIds, collectAssetIds, deepClone, findNode, uid, walk } from './tree';
+import { adoptTokens, carriedBy, type CarriedTokens } from './tokens';
 import type { AssetMeta, BoardKind, Doc, FrameNode, SceneNode } from './types';
 
 // The design library: work worth keeping, saved outside any project so every new project can use
@@ -94,7 +95,8 @@ async function packTemplate(board: Doc, nodes: SceneNode[]): Promise<Uint8Array>
   b.statusReason = null;
   b.assets = Object.fromEntries(metas.map((m) => [m.id, m]));
   b.assetOrder = metas.filter((m) => m.kind === 'image').map((m) => m.id);
-  const files: Zippable = { 'template.json': [strToU8(JSON.stringify({ app: 'spread', version: 1, board: b })), { level: 6 }] };
+  const tokens = carriedBy(useStore.getState().project, nodes);
+  const files: Zippable = { 'template.json': [strToU8(JSON.stringify({ app: 'spread', version: 1, board: b, tokens })), { level: 6 }] };
   for (const m of metas) {
     const rec = getAsset(m.id);
     if (rec) files[`assets/${m.id}.${extFor(m)}`] = [new Uint8Array(await rec.blob.arrayBuffer()), { level: m.kind === 'font' ? 6 : 0 }];
@@ -108,7 +110,8 @@ async function packTemplate(board: Doc, nodes: SceneNode[]): Promise<Uint8Array>
  */
 async function unpackTemplate(t: Saved<TemplateMeta>, photoIds: string[] = []): Promise<Doc> {
   const entries = unzipSync((await requireNative().readFile(`${t.dir}/template.spread`)).data);
-  const board: Doc = JSON.parse(strFromU8(entries['template.json'])).board;
+  const { board, tokens } = JSON.parse(strFromU8(entries['template.json'])) as { board: Doc; tokens?: CarriedTokens };
+  useStore.getState().changeProject((p) => adoptTokens(p, tokens, board.nodes));
   const tray = useStore.getState().doc.assets;
   const swap = photoIds.filter((id) => tray[id]?.kind === 'image');
   let i = 0;

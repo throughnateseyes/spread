@@ -150,3 +150,31 @@
 .repeat-table th input { background: none; color: var(--muted); font-weight: 500; }
 .repeat-photo { display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; padding: 0; overflow: hidden; border: 1px dashed var(--faint); border-radius: 4px; background: none; color: var(--muted); font-size: 10px; }
 .repeat-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+/* Text styles and spacing tokens */
+.token-name, .token-cell { width: 100%; box-sizing: border-box; height: 28px; padding: 0 8px; border: 1px solid transparent; border-radius: 4px; background: var(--hover); color: var(--text); font: inherit; font-size: 12px; }
+.token-name { border-color: var(--accent, #0d99ff); }
+.token-name:focus, .token-cell:focus { outline: none; border-color: var(--accent, #0d99ff); }
+.token-note { display: flex; flex-direction: column; gap: 6px; color: var(--muted); font-size: 11px; }
+.token-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.token-rows { display: flex; flex-direction: column; gap: 6px; }
+.token-row { display: grid; grid-template-columns: 64px minmax(0, 1fr); align-items: center; gap: 6px; }
+.token-label { color: var(--muted); font-size: 11px; }
+.token-head { display: flex; align-items: center; justify-content: space-between; margin: 16px 0 8px; }
+.token-head:first-of-type { margin-top: 0; }
+.token-head h3 { margin: 0; font-size: 12px; font-weight: 600; }
+.token-table { width: 100%; border-collapse: collapse; }
+.token-table th { padding: 2px 3px; color: var(--muted); font-size: 11px; font-weight: 500; text-align: left; }
+.token-table td { padding: 2px 3px; vertical-align: middle; }
+.token-table .token-uses { width: 44px; color: var(--muted); font-size: 11px; text-align: right; font-variant-numeric: tabular-nums; }
+.token-styles { table-layout: fixed; }
+.token-styles th:nth-child(1) { width: 22%; }
+.token-styles th:nth-child(2) { width: 22%; }
+.token-styles th:nth-child(3) { width: 17%; }
+.token-styles th:nth-child(4) { width: 9%; }
+.token-styles th:nth-child(5), .token-styles th:nth-child(6) { width: 11%; }
+.token-styles th:nth-child(7), .token-styles th:nth-child(9) { width: 32px; }
+.token-narrow { max-width: 420px; }
+.token-scroll { overflow-y: auto; max-height: 200px; }
+.token-sample { max-width: 280px; overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.token-look { color: var(--muted); font-size: 11px; white-space: nowrap; }

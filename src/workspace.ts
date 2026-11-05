@@ -7,6 +7,7 @@ import { native, type ProjectIndex, type ProjectRecord } from './platform';
 import { clearAutosave, flushSave, loadProjectBytes, restoreAutosave, safeFileName } from './project';
 import { useStore } from './store';
 import { cloneBoard, collectAssetIds, makeDoc, makeDocumentBoard, makeEmailBoard, makeProject, migrateProject, uid } from './tree';
+import { adoptTokens, carriedBy } from './tokens';
 import type { AssetMeta, BoardKind, Doc, Project } from './types';
 
 // The desktop app's projects: the Home list, its folders, and the open tabs. Every project is a
@@ -438,8 +439,10 @@ export async function copyBoardTo(boardId: string, path: string) {
   const board = cloneBoard(src, src.name);
   const used = collectAssetIds(board.nodes);
   const metas: AssetMeta[] = Object.values(src.assets).filter((m) => m.kind === 'font' || used.has(m.id));
+  const tokens = carriedBy(s.project, board.nodes);
   if (!(await switchTo(path))) return;
   const t = useStore.getState();
+  t.changeProject((p) => adoptTokens(p, tokens, board.nodes));
   t.addAssets(metas.filter((m) => getAsset(m.id)));
   t.addBoard(board, t.project.activeBoardId);
   t.toast(`Copied "${src.name}" here`, 'success');

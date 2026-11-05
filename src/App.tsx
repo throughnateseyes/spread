@@ -8,6 +8,7 @@ import ExportDialog from './components/ExportDialog';
 import PreviewModal from './components/PreviewModal';
 import ArrangeDialog from './components/ArrangeDialog';
 import RepeatDialog from './components/RepeatDialog';
+import StylesDialog from './components/StylesPanel';
 import EmailExportDialog from './components/EmailExportDialog';
 import PdfExportDialog from './components/PdfExportDialog';
 import ClaudeDialog from './components/ClaudeDialog';
@@ -97,6 +98,7 @@ export default function App() {
       {modal === 'preview' && <PreviewModal />}
       {modal === 'arrange' && <ArrangeDialog />}
       {modal === 'repeat' && <RepeatDialog />}
+      {modal === 'styles' && <StylesDialog />}
       {modal === 'shortcuts' && (
         <Modal title="Keyboard shortcuts" onClose={close} width={560}>
           <div className="shortcuts">

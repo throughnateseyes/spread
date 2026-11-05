@@ -2,8 +2,9 @@ import { measureText, textLines, type LayoutMap } from './layout';
 import { absoluteBoxes } from './render';
 import { fontWeights } from './fonts';
 import { LINK_ISSUE_TEXT, collectLinks } from './links';
+import { STYLE_LABEL, styleDiffs } from './tokens';
 import { walk } from './tree';
-import type { Box, Brand, Doc, Paint, SceneNode, TextNode } from './types';
+import type { Box, Brand, Doc, Paint, Project, SceneNode, TextNode } from './types';
 
 // Layout lint: the mechanical checks ("the Floor") the app can compute exactly, so Claude spends
 // its attention on taste instead of eyeballing margins. Pure function of the board + its layout,
@@ -48,10 +49,11 @@ const r1 = (v: number) => Math.round(v * 10) / 10;
 const overlaps = (a: Box, b: Box) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
 const contains = (outer: Box, p: { x: number; y: number }) => p.x >= outer.x && p.x <= outer.x + outer.w && p.y >= outer.y && p.y <= outer.y + outer.h;
 
-export function lintBoard(doc: Doc, layout: LayoutMap, brand: Brand | null = null): { issues: LintIssue[]; summary: string } {
+export function lintBoard(doc: Doc, layout: LayoutMap, brand: Brand | null = null, project: Project | null = null): { issues: LintIssue[]; summary: string } {
   const issues: LintIssue[] = [];
   lintWeights(doc, issues);
   lintRepeats(doc, issues);
+  if (project) lintStyles(doc, project, issues);
   if (doc.kind === 'email') {
     lintLinks(doc, issues);
     if (brand) lintBrand(doc, brand, 'px', issues);
@@ -261,6 +263,22 @@ function lintRepeats(doc: Doc, issues: LintIssue[]) {
     });
     return false;
   });
+}
+
+/** Text that has drifted from its style: one issue per style, naming what differs. */
+function lintStyles(doc: Doc, project: Project, issues: LintIssue[]) {
+  for (const style of project.textStyles ?? []) {
+    const off: TextNode[] = [];
+    const what = new Set<string>();
+    walk(doc.nodes, (n) => {
+      if (n.type !== 'text' || n.textStyle !== style.id || n.cloneOf) return;
+      const diffs = styleDiffs(n, style);
+      if (!diffs.length) return;
+      off.push(n);
+      for (const k of diffs) what.add(STYLE_LABEL[k]);
+    });
+    if (off.length) issues.push({ severity: 'warn', rule: 'text-style', message: `${off.length} ${off.length === 1 ? 'layer differs' : 'layers differ'} from ${style.name}: ${[...what].join(', ')}.`, page: null, ids: off.map((n) => n.id), keys: off.map((n) => n.key ?? null) });
+  }
 }
 
 function lintLinks(doc: Doc, issues: LintIssue[]) {

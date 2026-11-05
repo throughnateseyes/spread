@@ -146,6 +146,8 @@ export interface TextNode extends BaseNode {
   fill: string;
   uppercase: boolean;
   decoration: 'none' | 'underline' | 'line-through';
+  /** The text style this layer follows (see tokens.ts). Values that differ from it stay as they are. */
+  textStyle?: string;
 }
 
 export interface ShapeNode extends BaseNode {
@@ -157,6 +159,8 @@ export interface ShapeNode extends BaseNode {
   /** Blurs whatever sits behind the layer, in layer px. Shows through a see-through fill. */
   backdropBlur?: number;
 }
+
+export type SpaceSlot = 'gap' | 't' | 'r' | 'b' | 'l';
 
 export interface FrameNode extends BaseNode {
   type: 'frame';
@@ -170,6 +174,8 @@ export interface FrameNode extends BaseNode {
   layout: LayoutMode;
   gap: number;
   padding: { t: number; r: number; b: number; l: number };
+  /** The spacing tokens the gap and padding sides follow (see tokens.ts). */
+  space?: Partial<Record<SpaceSlot, string>>;
   /** Cross-axis alignment of children. */
   alignItems: 'start' | 'center' | 'end';
   /** Main-axis distribution of children. */
@@ -277,6 +283,22 @@ export interface Project {
   activeBoardId: string;
   /** The brand this project is designed in (from the brand library), or none: a personal project. */
   brandId?: string | null;
+  /** Named type, shared by every board. Changing one changes the layers that follow it. */
+  textStyles?: TextStyle[];
+  /** Named gaps and padding, shared by every board. */
+  spacing?: SpaceToken[];
+}
+
+/** Font, size and rhythm. Color and alignment stay per layer: a heading can be dark on one section and white on the next. */
+export interface TextStyle extends Pick<TextNode, 'fontFamily' | 'fontWeight' | 'italic' | 'fontSize' | 'lineHeight' | 'letterSpacing' | 'uppercase'> {
+  id: string;
+  name: string;
+}
+
+export interface SpaceToken {
+  id: string;
+  name: string;
+  value: number;
 }
 
 // ---------- brands ----------

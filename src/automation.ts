@@ -13,12 +13,13 @@ import { exportPdf } from './pdf';
 import { lintBoard } from './lint';
 import { photoCell } from './importer';
 import { fieldNamed, photoFields, repeatHost, setRows, startRepeat, stopRepeat } from './repeat';
+import { STYLE_PROPS, addSpace, addTextStyle, applyStyle, freeName, linkMatches, linkSpace, spaceNamed, styleDiffs, styleUses, styleValues, textStyleNamed, unstyledGroups } from './tokens';
 import { activeBrand, brandById, normalizeBrand, saveBrand, setProjectBrand, slugify, useBrands } from './brand';
 import { clearAutosave, loadProjectBytes, safeFileName, serializeProject } from './project';
 import { focusForClaude, newProjectOfKind, openInTab, projectsForClaude } from './workspace';
 import { BUNDLED_FONTS, SYSTEM_FONTS, uploadedFonts } from './fonts';
 import { homeDir, isElectron, listFiles, onAutomationRequest, picturesDir, readFile, respondAutomation, writeFiles, writeToPath } from './platform';
-import { PAGE_PRESETS, type AssetMeta, type Doc, type FrameNode, type ImageNode, type Paint, type SceneNode } from './types';
+import { PAGE_PRESETS, type AssetMeta, type Doc, type FrameNode, type ImageNode, type Paint, type SceneNode, type SpaceSlot, type TextNode } from './types';
 
 // Renderer side of the local automation bridge (electron/main.cjs ⇄ mcp/server.mjs).
 // Each method takes JSON params and returns JSON. Coordinates are strip-space px.
@@ -57,6 +58,8 @@ function normalisePatch(type: SceneNode['type'], p: Params) {
   if (type === 'image' && out.crop) out.crop = { zoom: 1, cx: 0.5, cy: 0.5, ...out.crop };
   if (type === 'image' && out.adjust) out.adjust = { brightness: 0, contrast: 0, saturation: 0, ...out.adjust };
   if (type === 'image' && out.effects) out.effects = (out.effects as Params[]).map(toEffect);
+  delete out.textStyle;
+  delete out.space;
   return out;
 }
 
@@ -67,6 +70,39 @@ function resolveAssetId(v: unknown): string | null {
   const byName = Object.values(d.assets).find((a) => a.name === v || a.name.replace(/\.[^.]+$/, '') === v);
   if (byName) return byName.id;
   throw new Error(`Unknown photo "${v}" — use an id or file name from get_state.photos`);
+}
+
+const namesOf = (list: { name: string }[] | undefined) => list?.map((x) => x.name).join(', ') || 'none yet';
+
+function textStyleOf(ref: string) {
+  const p = useStore.getState().project;
+  const s = textStyleNamed(p, ref);
+  if (!s) throw new Error(`Unknown text style "${ref}". This project has: ${namesOf(p.textStyles)}. Add it with spread_save_styles.`);
+  return s;
+}
+
+function spaceOf(ref: string) {
+  const p = useStore.getState().project;
+  const t = spaceNamed(p, ref);
+  if (!t) throw new Error(`Unknown spacing token "${ref}". This project has: ${namesOf(p.spacing)}. Add it with spread_save_styles.`);
+  return t;
+}
+
+const SPACE_SPEC: Record<string, SpaceSlot[]> = { gap: ['gap'], padding: ['t', 'r', 'b', 'l'], paddingX: ['l', 'r'], paddingY: ['t', 'b'] };
+
+/** textStyle and space in a spec. They go first, so any value set beside them wins for that layer. */
+function linkTokens(n: SceneNode, spec: Params) {
+  if (n.type === 'text' && 'textStyle' in spec) {
+    if (spec.textStyle) applyStyle(n, textStyleOf(spec.textStyle));
+    else delete n.textStyle;
+  }
+  if (n.type === 'frame' && spec.space && typeof spec.space === 'object') {
+    for (const [name, ref] of Object.entries(spec.space as Record<string, string | null>)) {
+      const slots = SPACE_SPEC[name];
+      if (!slots) throw new Error(`Unknown space "${name}". Use gap, padding, paddingX or paddingY.`);
+      for (const slot of slots) linkSpace(n, slot, ref ? spaceOf(ref) : null);
+    }
+  }
 }
 
 function fromSpec(spec: Params): SceneNode {
@@ -100,6 +136,7 @@ function fromSpec(spec: Params): SceneNode {
     default:
       throw new Error(`Unknown node type "${spec.type}" (use text, image, rect, ellipse, frame)`);
   }
+  linkTokens(n, spec);
   Object.assign(n, normalisePatch(n.type, spec));
   if (n.type === 'frame' && Array.isArray(spec.children)) n.children = spec.children.map(fromSpec);
   return n;
@@ -140,12 +177,30 @@ function outlineNodes(nodes: SceneNode[]): unknown[] {
       type: n.type,
       box: roundBox(abs.get(n.id)),
       ...(n.type === 'text' ? { text: n.text.length > 60 ? `${n.text.slice(0, 60)}…` : n.text } : {}),
+      ...(n.type === 'text' && n.textStyle ? styleBrief(n) : {}),
       ...(n.visible ? {} : { hidden: true }),
       ...(nodeLink(n) !== undefined ? { link: nodeLink(n) } : {}),
       // A repeat is one card and a table. The other cards are copies of it, so they'd only add noise.
       ...(n.type === 'frame' && n.repeat ? { repeat: { fields: n.repeat.fields, columns: n.repeat.columns, cards: n.repeat.rows.length }, children: rec(n.children.slice(0, 1).map((l) => (l.type === 'frame' ? { ...l, children: l.children.slice(0, 1) } : l))) } : n.type === 'frame' ? { children: rec(n.children) } : {}),
     }));
   return rec(nodes);
+}
+
+function styleBrief(n: TextNode) {
+  const s = useStore.getState().project.textStyles?.find((x) => x.id === n.textStyle);
+  if (!s) return {};
+  const differs = styleDiffs(n, s);
+  return { style: s.name, ...(differs.length ? { differs } : {}) };
+}
+
+function stylesReport() {
+  const p = useStore.getState().project;
+  const uses = styleUses(p);
+  return {
+    textStyles: (p.textStyles ?? []).map((s) => ({ ...s, layers: uses.get(s.id) ?? 0 })),
+    spacing: (p.spacing ?? []).map((t) => ({ ...t, frames: uses.get(t.id) ?? 0 })),
+    unstyled: unstyledGroups(p).slice(0, 20),
+  };
 }
 
 function roundBox(b?: { x: number; y: number; w: number; h: number }) {
@@ -165,6 +220,7 @@ function summary(detail: 'full' | 'outline' = 'full') {
     note: d.note ?? null,
     boards: boardsSummary(),
     brand: brandBrief(),
+    ...(s.project.textStyles?.length || s.project.spacing?.length ? { styles: { text: s.project.textStyles?.map((x) => ({ id: x.id, name: x.name })) ?? [], spacing: s.project.spacing ?? [] } } : {}),
     name: d.name,
     slideWidth: d.slideWidth,
     slideHeight: d.slideHeight,
@@ -211,13 +267,13 @@ function boardsSummary() {
 }
 
 /** Methods that act on the project as a whole rather than one board. */
-const PROJECT_METHODS = new Set(['list_projects', 'list_library', 'create_from_template', 'save_template', 'save_reference', 'batch', 'list_brands', 'get_brand', 'save_brand', 'use_brand', 'make_variants', 'list_email_templates', 'create_email', 'get_feedback', 'list_boards', 'create_board', 'duplicate_board', 'delete_board', 'update_board', 'render_overview', 'new_project', 'open_project', 'save_project', 'undo', 'redo', 'list_fonts', 'import_photos']);
+const PROJECT_METHODS = new Set(['list_styles', 'list_projects', 'list_library', 'create_from_template', 'save_template', 'save_reference', 'batch', 'list_brands', 'get_brand', 'save_brand', 'use_brand', 'make_variants', 'list_email_templates', 'create_email', 'get_feedback', 'list_boards', 'create_board', 'duplicate_board', 'delete_board', 'update_board', 'render_overview', 'new_project', 'open_project', 'save_project', 'undo', 'redo', 'list_fonts', 'import_photos']);
 
 /** Methods whose purpose is to bring a board into focus. */
 const ACTIVATES = new Set(['create_email', 'activate_board', 'create_board', 'duplicate_board', 'select', 'export_slides']);
 
 /** Methods that only look: they leave the active board and selection exactly as the user had them. */
-const READ_ONLY = new Set(['list_links', 'list_projects', 'list_library', 'list_brands', 'get_brand', 'lint', 'email_html', 'list_email_templates', 'get_feedback', 'get_state', 'list_boards', 'render_slides', 'render_overview', 'list_fonts', 'unused_photos']);
+const READ_ONLY = new Set(['list_styles', 'list_links', 'list_projects', 'list_library', 'list_brands', 'get_brand', 'lint', 'email_html', 'list_email_templates', 'get_feedback', 'get_state', 'list_boards', 'render_slides', 'render_overview', 'list_fonts', 'unused_photos']);
 
 function requireBoard(id: unknown): string {
   const p = useStore.getState().project;
@@ -329,6 +385,7 @@ function applyChanges(d: Doc, changes: Params[], idMap: Map<string, string>): st
       }
       if (n.type === 'text' && 'w' in u && !('sizingH' in u) && n.sizingH === 'hug') patch.sizingH = 'fixed';
       if (n.type === 'frame' && Array.isArray(u.children)) n.children = u.children.map(fromSpec);
+      linkTokens(n, u);
       Object.assign(n, patch);
     }
   }
@@ -625,6 +682,7 @@ const handlers: Record<string, (p: Params) => Promise<unknown> | unknown> = {
         }
         if (n.type === 'text' && 'w' in u && !('sizingH' in u) && n.sizingH === 'hug') patch.sizingH = 'fixed';
         if (n.type === 'frame' && Array.isArray(u.children)) n.children = u.children.map(fromSpec);
+        linkTokens(n, u);
         Object.assign(n, patch);
         if ('link' in u) setNodeLink(n, u.link ?? null);
         updated++;
@@ -797,8 +855,63 @@ const handlers: Record<string, (p: Params) => Promise<unknown> | unknown> = {
   },
 
   lint() {
-    const d = useStore.getState().doc;
-    return { boardId: d.id, brand: activeBrand()?.name ?? null, ...lintBoard(d, currentLayout(), activeBrand()) };
+    const s = useStore.getState();
+    const d = s.doc;
+    return { boardId: d.id, brand: activeBrand()?.name ?? null, ...lintBoard(d, currentLayout(), activeBrand(), s.project) };
+  },
+
+  list_styles() {
+    return stylesReport();
+  },
+
+  save_styles(p) {
+    const s = useStore.getState();
+    const texts: Params[] = Array.isArray(p.textStyles) ? p.textStyles : [];
+    const spaces: Params[] = Array.isArray(p.spacing) ? p.spacing : [];
+    const drop: string[] = Array.isArray(p.delete) ? p.delete : [];
+    if (!texts.length && !spaces.length && !drop.length) throw new Error('Pass textStyles, spacing or delete.');
+    // Layers to copy a look from, found before anything changes.
+    const looks = new Map<Params, TextNode>();
+    for (const t of texts) {
+      if (!t.from) continue;
+      const n = findNode(s.doc.nodes, t.from) ?? findByKey(s.doc.nodes, t.from)[0];
+      if (n?.type !== 'text') throw new Error(`"${t.from}" isn't a text layer on this board.`);
+      looks.set(t, n);
+    }
+    let linked = 0;
+    s.changeProject((pr) => {
+      for (const t of texts) {
+        if (typeof t.name !== 'string' || !t.name.trim()) throw new Error('Every text style needs a name.');
+        const values = { ...(looks.has(t) ? styleValues(looks.get(t)!) : {}), ...Object.fromEntries(STYLE_PROPS.filter((k) => t[k] !== undefined).map((k) => [k, t[k]])) };
+        let style = textStyleNamed(pr, t.id ?? t.name);
+        if (style) Object.assign(style, values);
+        else {
+          if (values.fontFamily === undefined || values.fontSize === undefined) throw new Error(`New style "${t.name}" needs fontFamily and fontSize, or from: a text layer to copy.`);
+          style = addTextStyle(pr, t.name, { ...styleValues(makeText(0, 0)), fontWeight: 400, ...values });
+        }
+        if (t.rename) style.name = freeName(pr.textStyles!.filter((x) => x !== style), t.rename);
+        if (t.linkMatching) linked += linkMatches(pr, style);
+      }
+      for (const t of spaces) {
+        if (typeof t.name !== 'string' || !t.name.trim()) throw new Error('Every spacing token needs a name.');
+        let token = spaceNamed(pr, t.id ?? t.name);
+        if (token) {
+          if (typeof t.value === 'number') token.value = t.value;
+        } else {
+          if (typeof t.value !== 'number') throw new Error(`New token "${t.name}" needs a value.`);
+          token = addSpace(pr, t.name, t.value);
+        }
+        if (t.rename) token.name = freeName(pr.spacing!.filter((x) => x !== token), t.rename);
+      }
+      for (const ref of drop) {
+        const style = textStyleNamed(pr, ref);
+        const token = spaceNamed(pr, ref);
+        if (!style && !token) throw new Error(`Nothing named "${ref}" to delete.`);
+        if (style) pr.textStyles = pr.textStyles!.filter((x) => x.id !== style.id);
+        if (token) pr.spacing = pr.spacing!.filter((x) => x.id !== token.id);
+      }
+    });
+    return { ...stylesReport(), linked };
   },
 
   async export_pdf(p) {

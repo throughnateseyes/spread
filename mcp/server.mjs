@@ -143,10 +143,10 @@ const COLORS = `COLORS: '#RRGGBB' or '#RRGGBBAA'. Text 'fill' is a color string.
 
 const NODE_SPEC = `NODE SPEC fields (all optional except type):
 - common: key (stable role name, see KEYS), name, link (email boards: the URL this layer and everything inside it goes to; null removes it), x, y, w, h, rotation (deg), opacity (0–1), visible, locked, sizingH/sizingV ('fixed'|'hug'|'fill'; 'fill' only inside auto layout; 'hug' for text and auto layout frames), shadow {enabled, color, x, y, blur}.
-- text: text (use \\n for line breaks), fontFamily (call spread_list_fonts; bundled: 'Inter Variable', 'DM Sans Variable', 'Space Grotesk Variable', 'Archivo Variable', 'Playfair Display Variable', 'Fraunces Variable', 'DM Serif Display', 'Instrument Serif', 'Bebas Neue'), fontWeight (100–900; default 600, so always set it for body copy), italic, fontSize (px), lineHeight (multiplier, e.g. 1.1), letterSpacing (percent of size, Figma-style, e.g. -2), align ('left'|'center'|'right'|'justify'), fill (color), uppercase, decoration ('none'|'underline'|'line-through'). Text hugs its content by default; set sizingH:'fixed' and w to wrap at a width.
+- text: text (use \\n for line breaks), fontFamily (call spread_list_fonts; bundled: 'Inter Variable', 'DM Sans Variable', 'Space Grotesk Variable', 'Archivo Variable', 'Playfair Display Variable', 'Fraunces Variable', 'DM Serif Display', 'Instrument Serif', 'Bebas Neue'), fontWeight (100–900; default 600, so always set it for body copy), italic, fontSize (px), lineHeight (multiplier, e.g. 1.1), letterSpacing (percent of size, Figma-style, e.g. -2), align ('left'|'center'|'right'|'justify'), fill (color), uppercase, decoration ('none'|'underline'|'line-through'). Text hugs its content by default; set sizingH:'fixed' and w to wrap at a width. textStyle: a style's name (see spread_list_styles) sets its font, weight, size, line height, letter spacing and case, and the layer follows later changes to it; values passed beside it stay as that layer's own; null unlinks. Color and alignment are never part of a style.
 - image: assetId (from spread_get_state photos / spread_import_photos; null = empty placeholder), fit ('fill' crops to cover | 'fit'), crop {zoom ≥1, cx, cy} (focal point 0–1), radius, flipX, flipY, adjust {brightness, contrast, saturation} (each -1..1), effects (array, run in order, non-destructive, omitted fields use defaults): [{ type:'dither', pattern 'ordered'|'diffusion'|'noise', size (cell in layer px, 1-24), levels (2-8), mode 'duotone'|'photo', ink, paper, enabled, name }, { type:'grain', amount 0-1, size (1-8), enabled, name }, { type:'blur', mode 'even'|'progressive', amount (radius in layer px, 1-120), direction 'top'|'bottom'|'left'|'right' (side the blur grows towards), start 0-0.9 (how much stays sharp), enabled, name }]. Send the whole array when changing it, stroke, strokeWidth.
 - rect / ellipse: fill (Paint), stroke, strokeWidth, radius, backdropBlur (blurs what's behind it, layer px 0-120; needs a see-through fill, e.g. '#FFFFFF33').
-- frame: fill (Paint|null; default null, so a frame is see-through until you give it one), radius, clip, stroke, strokeWidth, backdropBlur, layout ('none'|'row'|'column' = auto layout), gap (default 0), padding (number, {x,y} or {t,r,b,l}; default 0), alignItems ('start'|'center'|'end'), justify ('start'|'center'|'end'|'between'), children (NodeSpec[]).`;
+- frame: space ({ gap, padding, paddingX, paddingY } naming spacing tokens; sets those values and follows later changes to the token; null unlinks), fill (Paint|null; default null, so a frame is see-through until you give it one), radius, clip, stroke, strokeWidth, backdropBlur, layout ('none'|'row'|'column' = auto layout), gap (default 0), padding (number, {x,y} or {t,r,b,l}; default 0), alignItems ('start'|'center'|'end'), justify ('start'|'center'|'end'|'between'), children (NodeSpec[]).`;
 
 const KEYS = `KEYS: any node may carry key (a stable role name). Unlike ids, keys survive board duplication, so the same layer has the same key on every variation row. Give important layers keys like headline, subhead, address, price, cta, scrim-1, photo-1… so you can restyle the same layer across rows in one call (spread_make_variants changes, update/delete by key).`;
 
@@ -166,6 +166,7 @@ const server = new McpServer(
   { name: 'spread', version: '0.2.0' },
   {
     instructions: `Spread is the user's local design canvas (a Figma replacement): carousels, emails, and pages of any size (resumes, posters, slides, banners). These tools drive the running desktop app live — the user sees every change on their canvas and can tweak by hand afterwards. You design and iterate; the user directs and makes the final call.
+STYLES: a project can have named text styles and spacing tokens (get_state lists them as styles). When it does, set textStyle on text and space on auto layout frames instead of raw values, and to change a type or spacing decision change the style once with spread_save_styles rather than editing layers.
 BRAND: every project uses one brand kit or none (get_state/get_feedback report it). With a brand, call spread_get_brand and design with only its fonts, colors, type scale, spacing and rules; spread_lint flags anything off-brand. With none (a personal project), use no brand's assets. Never switch a project's brand unless the user asks.
 FEWER CALLS: chain steps with spread_batch (e.g. update_nodes → lint → render_slides in one call). Each call may cost the user a permission click.
 NEW WORK: act as the user's senior designer and marketing lead. Call spread_guide('director') first and run its brief: one round of questions with options (how many directions, which territory), a strategy line, and direction concepts the user approves before you build. Skip the questions only when the brief is already complete or the user says "just make it".
@@ -183,7 +184,7 @@ ${COORDS}`,
 
 // Safety hints on every tool, so clients can ask less often: looking is read-only, and only a few
 // tools can lose work (deleting rows or layers, replacing the open project).
-const READ_ONLY_TOOLS = new Set(['spread_list_links', 'spread_list_projects', 'spread_list_library', 'spread_guide', 'spread_get_state', 'spread_list_boards', 'spread_get_feedback', 'spread_render_overview', 'spread_render_slides', 'spread_list_email_templates', 'spread_email_html', 'spread_list_fonts', 'spread_lint', 'spread_pdf_text', 'spread_list_brands', 'spread_get_brand']);
+const READ_ONLY_TOOLS = new Set(['spread_list_styles', 'spread_list_links', 'spread_list_projects', 'spread_list_library', 'spread_guide', 'spread_get_state', 'spread_list_boards', 'spread_get_feedback', 'spread_render_overview', 'spread_render_slides', 'spread_list_email_templates', 'spread_email_html', 'spread_list_fonts', 'spread_lint', 'spread_pdf_text', 'spread_list_brands', 'spread_get_brand']);
 const DESTRUCTIVE_TOOLS = new Set(['spread_delete_board', 'spread_delete_nodes', 'spread_new_project', 'spread_open_project']);
 function tool(name, config, cb) {
   const readOnly = READ_ONLY_TOOLS.has(name);
@@ -274,6 +275,49 @@ tool(
     inputSchema: { boardId },
   },
   passthrough('list_links'),
+);
+
+tool(
+  'spread_list_styles',
+  {
+    title: 'List text styles and spacing',
+    description: "Lists the project's named styles, shared by every board: { textStyles: [{ id, name, fontFamily, fontWeight, italic, fontSize, lineHeight, letterSpacing, uppercase, layers }], spacing: [{ id, name, value, frames }], unstyled: [{ ...look, layers, sample }] }. unstyled groups text with no style by how it looks, most used first: the styles the project is already using without names. Read-only.",
+    annotations: { readOnlyHint: true },
+    inputSchema: {},
+  },
+  passthrough('list_styles'),
+);
+
+tool(
+  'spread_save_styles',
+  {
+    title: 'Save text styles and spacing',
+    description: "Adds or changes named styles in one undo step. One change here replaces editing every layer: all linked layers on every board follow, except a value set by hand on a layer, which stays (get_state detail 'outline' shows those as differs; spread_lint flags them under text-style). textStyles match by id or name: an existing style changes only the fields you pass; a new one needs fontFamily and fontSize, or from (a text layer's id or key on the active board, or boardId, to copy its look). linkMatching: true also links every layer on every board that already looks exactly like it, which is how to name what spread_list_styles reports as unstyled. spacing tokens need a value when new. rename gives either a new name. delete takes names or ids; layers keep their values and just stop following. Link layers with textStyle and space on spread_add_nodes / spread_update_nodes. Returns the same as spread_list_styles, plus linked.",
+    inputSchema: {
+      boardId,
+      textStyles: z
+        .array(
+          z.object({
+            name: z.string(),
+            id: z.string().optional(),
+            rename: z.string().optional(),
+            from: z.string().optional().describe("A text layer's id or key to copy the look from."),
+            linkMatching: z.boolean().optional(),
+            fontFamily: z.string().optional(),
+            fontWeight: z.number().optional(),
+            italic: z.boolean().optional(),
+            fontSize: z.number().positive().optional(),
+            lineHeight: z.number().positive().optional().describe('Multiplier, e.g. 1.4.'),
+            letterSpacing: z.number().optional().describe('Percent of the size.'),
+            uppercase: z.boolean().optional(),
+          }),
+        )
+        .optional(),
+      spacing: z.array(z.object({ name: z.string(), id: z.string().optional(), rename: z.string().optional(), value: z.number().min(0).optional() })).optional(),
+      delete: z.array(z.string()).optional().describe('Names or ids of styles and tokens to remove.'),
+    },
+  },
+  passthrough('save_styles'),
 );
 
 tool(
@@ -664,7 +708,7 @@ tool(
 // Email boards (e-blasts)
 // ---------------------------------------------------------------------------
 
-const EMAIL = `EMAIL BOARDS: kind 'email', 600px wide, height grows with content. One root auto-layout column frame whose children are sections (frames named "Section / …"). Edit with the normal node tools (spread_update_nodes by id/key; spread_add_nodes with parentId = a section or the root). Facts in template copy are {{TOKENS}} — replace every one with real values (export warns about leftovers). For grids of similar cards (listings, events), build one card and fill the rest with spread_repeat. Set a layer's link with the link prop on spread_add_nodes / spread_update_nodes, and check them all with spread_list_links. Tracking tags for every link go on the board (spread_update_board tracking). Older [link:URL] name tags still work; setting link replaces them. Layer-name tags the compiler reads: [alt:…] (image alt text), [button], [stack]/[nostack] (row frames stack on phones or not), [raster] (flatten to a picture). Images must be on public URLs: export with host: 'wordpress' when the user has connected WordPress (Spread uploads them and fills in the URLs); otherwise export once, the user uploads the image folder, then re-export with baseUrl. The board carries the subject and preview text (spread_update_board subject/preheader); export uses them.`;
+const EMAIL = `EMAIL BOARDS: kind 'email', 600px wide, height grows with content. One root auto-layout column frame whose children are sections (frames named "Section / …"). Edit with the normal node tools (spread_update_nodes by id/key; spread_add_nodes with parentId = a section or the root). Facts in template copy are {{TOKENS}} — replace every one with real values (export warns about leftovers). For grids of similar cards (listings, events), build one card and fill the rest with spread_repeat. Name repeated type (Body, Section heading) with spread_save_styles so one change reaches every layer. Set a layer's link with the link prop on spread_add_nodes / spread_update_nodes, and check them all with spread_list_links. Tracking tags for every link go on the board (spread_update_board tracking). Older [link:URL] name tags still work; setting link replaces them. Layer-name tags the compiler reads: [alt:…] (image alt text), [button], [stack]/[nostack] (row frames stack on phones or not), [raster] (flatten to a picture). Images must be on public URLs: export with host: 'wordpress' when the user has connected WordPress (Spread uploads them and fills in the URLs); otherwise export once, the user uploads the image folder, then re-export with baseUrl. The board carries the subject and preview text (spread_update_board subject/preheader); export uses them.`;
 
 const emailOpts = {
   baseUrl: z.string().optional().describe('Public folder URL the exported images will live at; image src = baseUrl + file name.'),
@@ -856,7 +900,7 @@ tool(
   'spread_lint',
   {
     title: 'Check layout (lint)',
-    description: `Runs the app's mechanical layout checks on a board (active, or boardId) and returns { issues: [{ severity 'error'|'warn', rule, message, page, ids, keys }], summary }. Rules: off-page, crosses-page (documents) / crosses-seam (carousels), margin (inside the page margins; carousels use 60), overflow (text cut off by a fixed-height box), tiny-text, line-length (body lines outside ~25–95 characters), widow (one word alone on a paragraph's last line), baseline (text top off the document baseline grid), contrast (below 4.5:1, or 3:1 for large type, against a solid background), overlap (text blocks colliding), alignment (left edges 0.5–3 units apart: a near miss; right-aligned blocks are judged by their right edge), spacing (with a baseline grid: stacked gaps off the grid; without one: gaps that differ by ≤2 units), type-system (more than 2 families or 6 sizes), empty-page. Run it after every build pass and fix every error before showing the user; warnings need a reason to stay. Read-only.`,
+    description: `Runs the app's mechanical layout checks on a board (active, or boardId) and returns { issues: [{ severity 'error'|'warn', rule, message, page, ids, keys }], summary }. Rules: off-page, crosses-page (documents) / crosses-seam (carousels), margin (inside the page margins; carousels use 60), overflow (text cut off by a fixed-height box), tiny-text, line-length (body lines outside ~25–95 characters), widow (one word alone on a paragraph's last line), baseline (text top off the document baseline grid), contrast (below 4.5:1, or 3:1 for large type, against a solid background), overlap (text blocks colliding), text-style (layers that differ from their style), alignment (left edges 0.5–3 units apart: a near miss; right-aligned blocks are judged by their right edge), spacing (with a baseline grid: stacked gaps off the grid; without one: gaps that differ by ≤2 units), type-system (more than 2 families or 6 sizes), empty-page. Run it after every build pass and fix every error before showing the user; warnings need a reason to stay. Read-only.`,
     inputSchema: { boardId },
     annotations: { readOnlyHint: true },
   },

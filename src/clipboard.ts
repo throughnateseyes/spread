@@ -3,13 +3,14 @@ import { useStore, currentLayout, activeOrigin } from './store';
 import { cloneWithNewIds, collectAssetIds, findNode, makeText, pathTo } from './tree';
 import { absoluteBox } from './layout';
 import { importFiles } from './importer';
+import { adoptTokens, carriedBy, type CarriedTokens } from './tokens';
 import type { AssetMeta, SceneNode } from './types';
 
 // Internal clipboard for nodes (with absolute positions so paste can land anywhere),
 // plus OS clipboard integration: pasted images import, pasted text becomes a text layer.
 
 const MARKER = '⁣spread-nodes';
-let clip: { nodes: SceneNode[]; abs: { x: number; y: number }[]; assets: AssetMeta[] } | null = null;
+let clip: { nodes: SceneNode[]; abs: { x: number; y: number }[]; assets: AssetMeta[]; tokens: CarriedTokens } | null = null;
 
 /** Photos the clipboard still needs after the project they came from closes. */
 export const clipAssetIds = () => clip?.assets.map((a) => a.id) ?? [];
@@ -34,7 +35,7 @@ export function copySelection() {
   }
   if (!nodes.length) return false;
   const used = collectAssetIds(nodes);
-  clip = { nodes, abs, assets: Object.values(s.doc.assets).filter((a) => used.has(a.id)) };
+  clip = { nodes, abs, assets: Object.values(s.doc.assets).filter((a) => used.has(a.id)), tokens: carriedBy(s.project, nodes) };
   cascade = { slide: -1, n: 0 };
   navigator.clipboard?.writeText(MARKER).catch(() => {});
   return true;
@@ -80,6 +81,8 @@ export function pasteClipboard(at?: { x: number; y: number }, opts: { inPlace?: 
     if (c.sizingV === 'fill') c.sizingV = 'fixed';
     return c;
   });
+  // Copied in another project tab: the styles come too, or join ones of the same name.
+  s.changeProject((p) => adoptTokens(p, clip!.tokens, fresh));
   s.addNodes(fresh, null);
   return true;
 }

@@ -6,6 +6,7 @@ import { cloneBoard, cloneWithNewIds, collectAssetIds, deepClone, findNode, loca
 import { absoluteBox, contentBottom, getLayout } from './layout';
 import { removeAsset } from './assets';
 import { syncRepeats } from './repeat';
+import { syncTokens } from './tokens';
 
 // Single app store. The project (several boards stacked as rows) is immutable (immer).
 // `doc` is always the ACTIVE board — most code only ever touches that. Every edit goes
@@ -72,7 +73,7 @@ interface State {
   dirty: boolean;
   toasts: Toast[];
   /** Modal currently open. */
-  modal: null | 'export' | 'preview' | 'arrange' | 'shortcuts' | 'new-board' | 'claude' | 'brands' | 'library' | 'repeat';
+  modal: null | 'export' | 'preview' | 'arrange' | 'shortcuts' | 'new-board' | 'claude' | 'brands' | 'library' | 'repeat' | 'styles';
   leftTab: 'layers' | 'photos';
   /** The Home screen covers the editor (desktop app). */
   homeOpen: boolean;
@@ -139,14 +140,18 @@ export function activeOf(p: Project): Doc {
 }
 
 /** Email boards grow with their content. */
-function syncAutoHeight(p: Project, fontsVersion: number): Project {
-  const b = activeOf(p);
-  if (!b?.autoHeight) return p;
-  const h = Math.max(200, Math.ceil(contentBottom(b.nodes, getLayout(b.nodes, fontsVersion))));
-  if (h === b.slideHeight) return p;
-  return produce(p, (d) => {
-    activeOf(d).slideHeight = h;
-  });
+function syncAutoHeight(p: Project, fontsVersion: number, everyBoard = false): Project {
+  // A style change can reach boards other than the active one.
+  const boards = everyBoard ? p.boards : [activeOf(p)];
+  for (const b of boards) {
+    if (!b?.autoHeight) continue;
+    const h = Math.max(200, Math.ceil(contentBottom(b.nodes, getLayout(b.nodes, fontsVersion))));
+    if (h === b.slideHeight) continue;
+    p = produce(p, (d) => {
+      d.boards.find((x) => x.id === b.id)!.slideHeight = h;
+    });
+  }
+  return p;
 }
 
 function nextVariantName(p: Project, base: string) {
@@ -161,8 +166,9 @@ export const useStore = create<State>((set, get) => {
   const commit = (next: Project, key?: string) => {
     const s = get();
     if (next === s.project) return;
-    const repeats = syncRepeats(next, s.project);
-    next = syncAutoHeight(repeats.project, s.fontsVersion);
+    const tokens = syncTokens(next, s.project);
+    const repeats = syncRepeats(tokens.project, s.project);
+    next = syncAutoHeight(repeats.project, s.fontsVersion, tokens.moved);
     const now = Date.now();
     // Keys starting with "g:" name one gesture (a drag, a scrub): merge it however slow it is.
     // Other keys merge only when repeated within COALESCE_MS (nudges, typing).
