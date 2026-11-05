@@ -27,6 +27,7 @@ import {
   AlignTopIcon,
   AngleIcon,
   ArrowClockwiseIcon,
+  ClockCounterClockwiseIcon,
   ArrowCounterClockwiseIcon,
   CircleNotchIcon,
   NotePencilIcon,
@@ -223,6 +224,7 @@ export const IconZoomOut = tuned(MagnifyingGlassMinusIcon, 'IconZoomOut');
 export const IconEye = tuned(EyeIcon, 'IconEye');
 export const IconEyeOff = tuned(EyeSlashIcon, 'IconEyeOff');
 export const IconLock = tuned(LockSimpleIcon, 'IconLock');
+export const IconClock = tuned(ClockCounterClockwiseIcon, 'IconClock');
 export const IconUnlock = tuned(LockSimpleOpenIcon, 'IconUnlock');
 export const IconChevronDown = tuned(CaretDownIcon, 'IconChevronDown');
 export const IconChevronRight = tuned(CaretRightIcon, 'IconChevronRight');

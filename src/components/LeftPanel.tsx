@@ -30,6 +30,7 @@ import {
   IconTrash,
   IconUnlock,
 } from '../ui/icons';
+import { HistoryTab } from './HistoryTab';
 import './panels.css';
 
 export default function LeftPanel() {
@@ -46,8 +47,11 @@ export default function LeftPanel() {
           Photos
           {photoCount > 0 && <span className="tab-count">{photoCount}</span>}
         </button>
+        <button role="tab" aria-selected={tab === 'history'} className={tab === 'history' ? 'on' : ''} onClick={() => set({ leftTab: 'history' })}>
+          History
+        </button>
       </div>
-      {tab === 'layers' ? <LayersTab /> : <PhotosTab />}
+      {tab === 'layers' ? <LayersTab /> : tab === 'photos' ? <PhotosTab /> : <HistoryTab />}
     </div>
   );
 }

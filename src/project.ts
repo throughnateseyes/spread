@@ -7,6 +7,7 @@ import { newProjectOfKind, noteSaved, openInTab } from './workspace';
 import { useStore } from './store';
 import { makeProject, migrateProject } from './tree';
 import { readComments, savableComments } from './comments';
+import { readChanges, type ChangeEntry } from './history';
 import type { AssetMeta, Brand, CanvasComment, Doc, Project } from './types';
 
 // .spread project files are zips: project.json + assets/<id>.<ext>, plus brand.json (a copy of the
@@ -24,6 +25,8 @@ interface ProjectJson {
   project?: Project;
   /** Notes pinned on the canvas (see comments.ts). */
   comments?: CanvasComment[];
+  /** Who changed what (see history.ts). */
+  changes?: ChangeEntry[];
 }
 
 const DOC_KEY = 'spread.doc';
@@ -56,9 +59,9 @@ export function projectName(p: Project = useStore.getState().project) {
 // ---------- serialise ----------
 
 export async function serializeProject(): Promise<Uint8Array> {
-  const { project, comments } = useStore.getState();
+  const { project, comments, changes } = useStore.getState();
   const files: Zippable = {};
-  const json: ProjectJson = { app: 'spread', version: 2, project, comments: savableComments(project, comments) };
+  const json: ProjectJson = { app: 'spread', version: 2, project, comments: savableComments(project, comments), changes };
   files['project.json'] = [strToU8(JSON.stringify(json)), { level: 6 }];
   const brand = brandById(project.brandId);
   if (brand) {
@@ -85,6 +88,7 @@ export async function loadProjectBytes(data: Uint8Array, path: string | null): P
   let entries: Record<string, Uint8Array>;
   let project: Project;
   let comments: CanvasComment[];
+  let changes: ChangeEntry[];
   try {
     entries = unzipSync(data);
     const raw = entries['project.json'];
@@ -93,6 +97,7 @@ export async function loadProjectBytes(data: Uint8Array, path: string | null): P
     if (json.app !== 'spread' || !(json.project || json.doc)) throw new Error('not a Spread project');
     project = migrateProject(json.project ?? json.doc);
     comments = readComments(json.comments, project);
+    changes = readChanges(json.changes);
   } catch (e) {
     toast(`Couldn't open project: ${(e as Error).message}`, 'error');
     return false;
@@ -116,7 +121,7 @@ export async function loadProjectBytes(data: Uint8Array, path: string | null): P
       missing.push(meta.name);
     }
   }
-  useStore.getState().replaceProject(project, path, comments);
+  useStore.getState().replaceProject(project, path, comments, changes);
   requestFit();
   if (project.brandId && entries['brand.json'] && !brandById(project.brandId)) {
     try {
@@ -222,9 +227,9 @@ export async function flushSave(): Promise<boolean> {
 }
 
 async function persistNow() {
-  const { project, comments, filePath, dirty } = useStore.getState();
+  const { project, comments, changes, filePath, dirty } = useStore.getState();
   try {
-    await set(DOC_KEY, { project, comments, filePath, dirty });
+    await set(DOC_KEY, { project, comments, changes, filePath, dirty });
     const metas = allAssetMetas(project);
     const live = new Set(metas.map((m) => m.id));
     for (const meta of metas) {
@@ -272,7 +277,7 @@ export async function restoreAutosave(): Promise<boolean> {
   try {
     const all = (await keys()).map(String);
     for (const k of all) if (k.startsWith(ASSET_PREFIX)) persisted.add(k.slice(ASSET_PREFIX.length));
-    const saved = (await get(DOC_KEY)) as { project?: Project; doc?: Doc; comments?: CanvasComment[]; filePath: string | null; dirty?: boolean } | undefined;
+    const saved = (await get(DOC_KEY)) as { project?: Project; doc?: Doc; comments?: CanvasComment[]; changes?: ChangeEntry[]; filePath: string | null; dirty?: boolean } | undefined;
     if (!saved || !(saved.project || saved.doc)) return false;
     const project = migrateProject(saved.project ?? saved.doc);
     if (projectIsEmpty(project)) return false;
@@ -286,7 +291,7 @@ export async function restoreAutosave(): Promise<boolean> {
         console.warn('Could not restore asset', meta.name, e);
       }
     }
-    useStore.getState().replaceProject(project, saved.filePath ?? null, readComments(saved.comments, project));
+    useStore.getState().replaceProject(project, saved.filePath ?? null, readComments(saved.comments, project), readChanges(saved.changes));
     useStore.setState({ dirty: saved.dirty ?? saved.filePath == null });
     requestFit();
     return true;

@@ -16,6 +16,7 @@ import { SpaceFields, StylesSection, TextStyleField } from './StylesPanel';
 import { OverlaySection } from './OverlayPanel';
 import { fallbackStack, isWebSafe } from '../email/html';
 import { Tooltip } from '../ui/Tooltip';
+import { LastChange } from './HistoryTab';
 import {
   ICON_DENSE,
   IconAlignBottom,
@@ -475,6 +476,7 @@ function SelectionPanel({ sel }: { sel: SceneNode[] }) {
           </>
         }
       />
+      {single && <LastChange node={single} />}
       {single && <RepeatSection node={single} />}
       <AlignSection geo={geo} doc={doc} />
       <LayoutSection geo={geo} upd={upd} />

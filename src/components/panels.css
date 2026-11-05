@@ -192,3 +192,22 @@
 .ref-area:hover { box-shadow: inset 0 0 0 1px var(--border); }
 .ref-area span:first-child { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .ref-area span:last-child { flex: none; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+/* History */
+.hist { display: flex; flex-direction: column; gap: 8px; padding: 12px; }
+.hist-filters { display: flex; flex-direction: column; gap: 8px; }
+.hist-entry { display: flex; flex-direction: column; gap: 2px; padding: 8px 0; border-top: 1px solid var(--hairline); }
+.hist-head { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 11px; }
+.hist-who { flex: none; font-weight: 600; }
+.hist-who.claude { color: var(--accent); }
+.hist-tag { flex: none; color: var(--muted); }
+.hist-board { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--muted); }
+.hist-time { flex: none; margin-left: auto; color: var(--muted); font-variant-numeric: tabular-nums; }
+.hist-line { display: block; width: 100%; padding: 2px 4px; margin-left: -4px; border: 0; border-radius: var(--radius); background: none; color: inherit; font: inherit; font-size: 12px; line-height: 16px; text-align: left; overflow-wrap: anywhere; }
+.hist-line:not(:disabled) { cursor: pointer; }
+.hist-line:not(:disabled):hover { background: var(--panel-2); }
+.hist-line:disabled { color: inherit; opacity: 1; }
+.hist-layer { color: var(--muted); }
+.hist-more { padding: 0 4px; margin-left: -4px; color: var(--muted); font-size: 11px; }
+.hist-last { display: block; width: 100%; padding: 8px 12px; border: 0; background: none; color: var(--muted); font: inherit; font-size: 11px; text-align: left; cursor: pointer; }
+.hist-last:hover { color: var(--text); }

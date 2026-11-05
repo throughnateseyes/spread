@@ -10,6 +10,7 @@ import { clearAssets, isFontFile, isHeic, isImageFile, registerFont, registerIma
 import { applyArrange, arrangeBoxes, ARRANGE_MODES, type ArrangeMode } from './arrange';
 import { exportSlides, renderBoardStripBase64, renderSlidesBase64 } from './exporter';
 import { exportPdf } from './pdf';
+import { filterChanges, timeAgo } from './history';
 import { lintBoard } from './lint';
 import { compareOverlay, overlayFromBoard, overlayFromLibrary, overlayFromPath, overlaySummary, patchOverlay, removeOverlay } from './overlay';
 import { photoCell } from './importer';
@@ -269,13 +270,13 @@ function boardsSummary() {
 }
 
 /** Methods that act on the project as a whole rather than one board. */
-const PROJECT_METHODS = new Set(['list_styles', 'list_projects', 'list_library', 'create_from_template', 'save_template', 'save_reference', 'batch', 'list_brands', 'get_brand', 'save_brand', 'use_brand', 'make_variants', 'list_email_templates', 'create_email', 'get_feedback', 'list_boards', 'create_board', 'duplicate_board', 'delete_board', 'update_board', 'render_overview', 'new_project', 'open_project', 'save_project', 'undo', 'redo', 'list_fonts', 'import_photos']);
+const PROJECT_METHODS = new Set(['get_history', 'list_styles', 'list_projects', 'list_library', 'create_from_template', 'save_template', 'save_reference', 'batch', 'list_brands', 'get_brand', 'save_brand', 'use_brand', 'make_variants', 'list_email_templates', 'create_email', 'get_feedback', 'list_boards', 'create_board', 'duplicate_board', 'delete_board', 'update_board', 'render_overview', 'new_project', 'open_project', 'save_project', 'undo', 'redo', 'list_fonts', 'import_photos']);
 
 /** Methods whose purpose is to bring a board into focus. */
 const ACTIVATES = new Set(['create_email', 'activate_board', 'create_board', 'duplicate_board', 'select', 'export_slides']);
 
 /** Methods that only look: they leave the active board and selection exactly as the user had them. */
-const READ_ONLY = new Set(['compare_overlay', 'preview_email', 'list_styles', 'list_links', 'list_projects', 'list_library', 'list_brands', 'get_brand', 'lint', 'email_html', 'list_email_templates', 'get_feedback', 'get_state', 'list_boards', 'render_slides', 'render_overview', 'list_fonts', 'unused_photos']);
+const READ_ONLY = new Set(['get_history', 'compare_overlay', 'preview_email', 'list_styles', 'list_links', 'list_projects', 'list_library', 'list_brands', 'get_brand', 'lint', 'email_html', 'list_email_templates', 'get_feedback', 'get_state', 'list_boards', 'render_slides', 'render_overview', 'list_fonts', 'unused_photos']);
 
 function requireBoard(id: unknown): string {
   const p = useStore.getState().project;
@@ -834,6 +835,25 @@ const handlers: Record<string, (p: Params) => Promise<unknown> | unknown> = {
     return {};
   },
 
+  /** Who changed what, newest first. */
+  get_history(p) {
+    const s = useStore.getState();
+    const ids: string[] = p.layerId ? [p.layerId] : [];
+    if (p.key) {
+      for (const b of s.project.boards) {
+        walk(b.nodes, (n) => {
+          if (n.key === p.key) ids.push(n.id);
+        });
+      }
+      if (!ids.length) throw new Error(`No layer has the key "${p.key}".`);
+    }
+    const all = filterChanges(s.changes, { who: p.who, boardId: p.boardId, layerIds: ids.length ? ids : undefined, query: p.query });
+    return {
+      total: all.length,
+      entries: all.slice(0, p.limit ?? 30).map(({ id: _id, at, lines, ...e }) => ({ at: new Date(at).toISOString(), ago: timeAgo(at), ...e, lines: lines.map(({ ids: layerIds, ...l }) => ({ ...l, ...(layerIds?.length === 1 ? { layerId: layerIds[0] } : {}) })) })),
+    };
+  },
+
   async set_overlay(p) {
     const id = useStore.getState().doc.id;
     if (p.remove) {
@@ -1077,7 +1097,7 @@ export async function runAutomation(method: string, params: Params = {}): Promis
     useStore.getState().setActiveBoard(requireBoard(params.boardId));
   }
   try {
-    return (await asClaude(() => fn(params))) ?? {};
+    return (await asClaude(() => fn(params), `spread_${method}`)) ?? {};
   } finally {
     if (restore) {
       const st = useStore.getState();

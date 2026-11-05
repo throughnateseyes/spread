@@ -35,7 +35,7 @@ interface Workspace {
 
 export const useWorkspace = create<Workspace>(() => ({ ready: false, loading: false, folders: [], projects: [], hidden: [], tabs: [], active: null }));
 
-const PARKED = ['project', 'doc', 'past', 'future', 'lastKey', 'lastKeyAt', 'editLog', 'selection', 'traySelection', 'view', 'comments', 'filePath', 'dirty'] as const;
+const PARKED = ['project', 'doc', 'past', 'future', 'lastKey', 'lastKeyAt', 'editLog', 'selection', 'traySelection', 'view', 'comments', 'changes', 'filePath', 'dirty'] as const;
 type Parked = Pick<ReturnType<typeof useStore.getState>, (typeof PARKED)[number]>;
 const parked = new Map<string, Parked>();
 

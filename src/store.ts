@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { produce } from 'immer';
 import type { AssetMeta, CanvasComment, Doc, FrameNode, Project, SceneNode, Tool } from './types';
 import type { CommentDraft } from './comments';
+import { CHANGE_LIMIT, describeChanges, type ChangeEntry } from './history';
 import { cloneBoard, cloneWithNewIds, collectAssetIds, deepClone, findNode, locate, makeDoc, makeFrame, makeProject, pathTo, removeNodes, uid, walk } from './tree';
 import { absoluteBox, contentBottom, getLayout } from './layout';
 import { removeAsset } from './assets';
@@ -24,7 +25,10 @@ export interface BoardEditLog {
 
 /** >0 while an automation (Claude) request is being applied. */
 let automationDepth = 0;
-export async function asClaude<T>(fn: () => Promise<T> | T): Promise<T> {
+/** The tool call being applied, so its changes log as one entry. */
+let claudeCall = { id: 0, via: '' };
+export async function asClaude<T>(fn: () => Promise<T> | T, via = ''): Promise<T> {
+  if (!automationDepth) claudeCall = { id: claudeCall.id + 1, via };
   automationDepth++;
   try {
     return await fn();
@@ -32,6 +36,16 @@ export async function asClaude<T>(fn: () => Promise<T> | T): Promise<T> {
     automationDepth--;
   }
 }
+/**
+ * Whether this change is Claude's. A call can run for a while, and a click or keypress during it is
+ * still the user's, which `window.event` tells apart. Only input counts: a picture finishing loading
+ * also sets it, and Claude's call carries on from inside that event.
+ */
+const claudeNow = () => {
+  if (!automationDepth) return false;
+  const e = typeof window === 'undefined' ? undefined : window.event;
+  return !(e instanceof UIEvent || e?.type === 'input' || e?.type === 'change' || e?.type === 'paste');
+};
 const COALESCE_MS = 800;
 
 export interface Toast {
@@ -74,13 +88,15 @@ interface State {
   toasts: Toast[];
   /** Modal currently open. */
   modal: null | 'export' | 'preview' | 'arrange' | 'shortcuts' | 'new-board' | 'claude' | 'brands' | 'library' | 'repeat' | 'styles' | 'inbox';
-  leftTab: 'layers' | 'photos';
+  leftTab: 'layers' | 'photos' | 'history';
   /** The Home screen covers the editor (desktop app). */
   homeOpen: boolean;
   /** The Claude side panel is open. */
   chatOpen: boolean;
   /** Notes pinned on the canvas. Outside `project` on purpose: no undo, no board copies, no exports. */
   comments: CanvasComment[];
+  /** Who changed what, oldest first (see history.ts). */
+  changes: ChangeEntry[];
   /** The note being written, if any. */
   commentDraft: CommentDraft | null;
   /** The pin whose popover is open. */
@@ -92,7 +108,7 @@ interface State {
   undo: () => void;
   redo: () => void;
   replaceDoc: (doc: Doc, filePath?: string | null) => void;
-  replaceProject: (p: Project, filePath?: string | null, comments?: CanvasComment[]) => void;
+  replaceProject: (p: Project, filePath?: string | null, comments?: CanvasComment[], changes?: ChangeEntry[]) => void;
 
   // boards
   setActiveBoard: (id: string) => void;
@@ -162,6 +178,20 @@ function nextVariantName(p: Project, base: string) {
 }
 
 export const useStore = create<State>((set, get) => {
+  /** The stretch of edits being logged as one: a drag, or everything in one Claude call. */
+  let run: { id: string; base: Project; start: number; at: number; last: Project } | null = null;
+  /** The log with this change in it. A run keeps rewriting its own entries, so a drag reads start to finish. */
+  const logChange = (prev: Project, next: Project, runId: string | null, join: boolean, undo?: ChangeEntry['undo']): ChangeEntry[] => {
+    const log = get().changes;
+    const open = join && runId && run?.id === runId && run.last === prev ? run : null;
+    const kept = open ? log.slice(0, open.start) : log.length < CHANGE_LIMIT ? log : log.slice(-CHANGE_LIMIT + 1);
+    const base = open?.base ?? prev;
+    const at = open?.at ?? Date.now();
+    run = runId ? { id: runId, base, start: kept.length, at, last: next } : null;
+    const byClaude = claudeNow();
+    const entries = describeChanges(base, next).map((d) => ({ ...d, id: uid(), at, who: byClaude ? ('claude' as const) : ('you' as const), ...(byClaude && claudeCall.via ? { via: claudeCall.via } : {}), ...(undo ? { undo } : {}) }));
+    return entries.length || open ? [...kept, ...entries] : kept;
+  };
   /** Applies a new project version with undo history. */
   const commit = (next: Project, key?: string) => {
     const s = get();
@@ -170,6 +200,7 @@ export const useStore = create<State>((set, get) => {
     const repeats = syncRepeats(tokens.project, s.project);
     next = syncAutoHeight(repeats.project, s.fontsVersion, tokens.moved);
     const now = Date.now();
+    const byClaude = claudeNow();
     // Keys starting with "g:" name one gesture (a drag, a scrub): merge it however slow it is.
     // Other keys merge only when repeated within COALESCE_MS (nudges, typing).
     const coalesce = !!key && key === s.lastKey && (key.startsWith('g:') || now - s.lastKeyAt < COALESCE_MS);
@@ -181,7 +212,7 @@ export const useStore = create<State>((set, get) => {
       // Only design changes count: picking, rejecting, renaming or noting a row is not a hand edit.
       if (old && old.nodes === b.nodes && old.slides === b.slides && old.background === b.background) continue;
       const e = editLog[b.id] ?? { claudeAt: null, userEditsSinceClaude: 0, userTouchedIds: [] };
-      if (automationDepth > 0) editLog[b.id] = { claudeAt: now, userEditsSinceClaude: 0, userTouchedIds: [] };
+      if (byClaude) editLog[b.id] = { claudeAt: now, userEditsSinceClaude: 0, userTouchedIds: [] };
       else {
         const touched = new Set(e.userTouchedIds);
         for (const id of s.selection) touched.add(id);
@@ -197,6 +228,7 @@ export const useStore = create<State>((set, get) => {
       lastKeyAt: now,
       dirty: true,
       editLog,
+      changes: logChange(s.project, next, byClaude ? `claude:${claudeCall.id}` : key ? `you:${key}` : null, byClaude || coalesce),
       // A repeat can drop cards, so the selection may point at layers that are gone.
       ...(repeats.changed ? { selection: validSel(activeOf(next), s.selection) } : {}),
     });
@@ -229,6 +261,7 @@ export const useStore = create<State>((set, get) => {
   leftTab: 'photos',
   chatOpen: false,
   comments: [],
+  changes: [],
   commentDraft: null,
   openComment: null,
   showComments: true,
@@ -247,20 +280,21 @@ export const useStore = create<State>((set, get) => {
     const prev = s.past[s.past.length - 1];
     if (!prev) return;
     const d = activeOf(prev);
-    set({ project: prev, doc: d, past: s.past.slice(0, -1), future: [s.project, ...s.future], lastKey: null, selection: validSel(d, s.selection), dirty: true });
+    set({ project: prev, doc: d, past: s.past.slice(0, -1), future: [s.project, ...s.future], lastKey: null, selection: validSel(d, s.selection), dirty: true, changes: logChange(s.project, prev, null, false, 'undo') });
   },
   redo: () => {
     const s = get();
     const next = s.future[0];
     if (!next) return;
     const d = activeOf(next);
-    set({ project: next, doc: d, past: [...s.past, s.project], future: s.future.slice(1), lastKey: null, selection: validSel(d, s.selection), dirty: true });
+    set({ project: next, doc: d, past: [...s.past, s.project], future: s.future.slice(1), lastKey: null, selection: validSel(d, s.selection), dirty: true, changes: logChange(s.project, next, null, false, 'redo') });
   },
   replaceDoc: (doc, filePath = null) => get().replaceProject(makeProject(doc), filePath),
-  replaceProject: (project, filePath = null, comments = []) =>
+  replaceProject: (project, filePath = null, comments = [], changes = []) =>
     set({
       project,
       comments,
+      changes,
       commentDraft: null,
       openComment: null,
       doc: activeOf(project),

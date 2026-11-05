@@ -89,6 +89,7 @@ Rows are lettered A, B, C… by position. The user picks a row with Ctrl+Enter a
 | `spread_create_email` | New email row from a template (`listing-spotlight`, `newsletter`, `resident-notice`, `event`, `blank`) |
 | `spread_add_email_section` | Insert a section into an email row |
 | `spread_email_html` | Compile to inbox-safe HTML without writing files: size, warnings, image list |
+| `spread_history` | Who changed what and when, filtered by board, layer, person or words |
 | `spread_set_overlay` | Lay a past design over a board to compare: a picture, an email's HTML, another board or a saved reference |
 | `spread_compare_overlay` | Measure a board against its reference: pixels changed, where, which layers, and what moved up or down |
 | `spread_preview_email` | See the real HTML as inboxes show it: desktop, phone, fallback fonts, images off, with checks and pictures |
