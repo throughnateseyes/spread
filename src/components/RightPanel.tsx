@@ -13,6 +13,8 @@ import { pickFonts, pickReplacement } from '../importer';
 import { Button, ColorField, IconButton, NumberField, Row, Section, Segmented, Select, Slider, SwatchContext, Toggle, parseColor, toColor } from '../ui/controls';
 import { dotColors, resolveFamily, useActiveBrand } from '../brand';
 import { SpaceFields, StylesSection, TextStyleField } from './StylesPanel';
+import { OverlaySection } from './OverlayPanel';
+import { fallbackStack, isWebSafe } from '../email/html';
 import { Tooltip } from '../ui/Tooltip';
 import {
   ICON_DENSE,
@@ -290,6 +292,7 @@ function DocumentPanel() {
 
       {email && <InboxSection />}
       {email && <LinksSection />}
+      <OverlaySection />
 
       <Section title="Background">
         <ColorField value={doc.background} onChange={(c, k) => change((d) => void (d.background = c), k ?? 'doc-bg')} />
@@ -718,6 +721,9 @@ function TextSection({ sel, upd, doc }: { sel: TextNode[]; upd: (fn: (n: SceneNo
           })
         }
       />
+      {doc.kind === 'email' && family !== 'mixed' && !isWebSafe(family as string) && (
+        <div className="hint">Most inboxes won't have this font, so they'll show {fallbackStack(family as string).split(', ')[0].replace(/'/g, '')}. Check it in Preview.</div>
+      )}
       <Row>
         <Select
           title="Font weight"

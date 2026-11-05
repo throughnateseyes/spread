@@ -437,6 +437,7 @@ export async function copyBoardTo(boardId: string, path: string) {
   const src = s.project.boards.find((b) => b.id === boardId);
   if (!src) return;
   const board = cloneBoard(src, src.name);
+  delete board.overlay; // its picture stays behind with this project
   const used = collectAssetIds(board.nodes);
   const metas: AssetMeta[] = Object.values(src.assets).filter((m) => m.kind === 'font' || used.has(m.id));
   const tokens = carriedBy(s.project, board.nodes);

@@ -140,6 +140,8 @@ The flow:
 
 **Preview** in the top bar shows the real HTML the way inboxes will: the inbox line, desktop and phone widths, fallback fonts and images off, with a short list of what changes. Claude gets the same view with `spread_preview_email`. It's one browser engine, not Outlook or Gmail themselves, so still send yourself a test.
 
+**Reference** in the right panel lays a past design over any board: a picture, an email's HTML file, another board or a saved reference. Fade it, switch to Difference, or press Compare to see how many pixels changed, where, and what moved up or down. It's saved with the board and never exported. Claude uses `spread_set_overlay` and `spread_compare_overlay`.
+
 You can do the last step yourself: **Export → Upload to WordPress → Preview & export → Upload & copy HTML**. Pictures that haven't changed since the last upload are reused, and a changed picture gets a new file name, so emails you've already sent keep working.
 
 ### Connecting WordPress (once)

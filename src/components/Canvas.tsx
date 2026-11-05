@@ -11,6 +11,7 @@ import TextEditor from './TextEditor';
 import SlideHeaders from './SlideHeaders';
 import CommentPins from './CommentPins';
 import LinkBadges from './LinkBadges';
+import { ReferenceOverlay } from './OverlayPanel';
 import { onBoard, startComment } from '../comments';
 import ContextMenu, { swapPhotos, type MenuState } from './ContextMenu';
 import {
@@ -1568,6 +1569,7 @@ export default function Canvas() {
           />
         </Layer>
       </Stage>
+      <ReferenceOverlay />
       <SlideHeaders />
       <LinkBadges />
       <CommentPins wrap={wrapRef.current} />

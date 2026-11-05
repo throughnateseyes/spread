@@ -11,6 +11,7 @@ import { applyArrange, arrangeBoxes, ARRANGE_MODES, type ArrangeMode } from './a
 import { exportSlides, renderBoardStripBase64, renderSlidesBase64 } from './exporter';
 import { exportPdf } from './pdf';
 import { lintBoard } from './lint';
+import { compareOverlay, overlayFromBoard, overlayFromLibrary, overlayFromPath, overlaySummary, patchOverlay, removeOverlay } from './overlay';
 import { photoCell } from './importer';
 import { fieldNamed, photoFields, repeatHost, setRows, startRepeat, stopRepeat } from './repeat';
 import { STYLE_PROPS, addSpace, addTextStyle, applyStyle, freeName, linkMatches, linkSpace, spaceNamed, styleDiffs, styleUses, styleValues, textStyleNamed, unstyledGroups } from './tokens';
@@ -227,6 +228,7 @@ function summary(detail: 'full' | 'outline' = 'full') {
     slideCount: d.slides.length,
     background: d.background,
     ...(d.kind === 'email' ? { email: { subject: d.email?.subject ?? null, preheader: d.email?.preheader ?? null } } : {}),
+    ...(d.overlay ? { overlay: { name: d.overlay.name, mode: d.overlay.mode, visible: d.overlay.visible } } : {}),
     slides: d.slides.map((sl, index) => ({ index, background: sl.background ?? d.background })),
     ...(d.page ? { page: d.page, units: d.page.units } : {}),
     grid: d.grid,
@@ -273,7 +275,7 @@ const PROJECT_METHODS = new Set(['list_styles', 'list_projects', 'list_library',
 const ACTIVATES = new Set(['create_email', 'activate_board', 'create_board', 'duplicate_board', 'select', 'export_slides']);
 
 /** Methods that only look: they leave the active board and selection exactly as the user had them. */
-const READ_ONLY = new Set(['preview_email', 'list_styles', 'list_links', 'list_projects', 'list_library', 'list_brands', 'get_brand', 'lint', 'email_html', 'list_email_templates', 'get_feedback', 'get_state', 'list_boards', 'render_slides', 'render_overview', 'list_fonts', 'unused_photos']);
+const READ_ONLY = new Set(['compare_overlay', 'preview_email', 'list_styles', 'list_links', 'list_projects', 'list_library', 'list_brands', 'get_brand', 'lint', 'email_html', 'list_email_templates', 'get_feedback', 'get_state', 'list_boards', 'render_slides', 'render_overview', 'list_fonts', 'unused_photos']);
 
 function requireBoard(id: unknown): string {
   const p = useStore.getState().project;
@@ -830,6 +832,26 @@ const handlers: Record<string, (p: Params) => Promise<unknown> | unknown> = {
     useStore.getState().select(p.ids ?? []);
     if (p.ids?.length) window.dispatchEvent(new Event('spread:zoom-selection'));
     return {};
+  },
+
+  async set_overlay(p) {
+    const id = useStore.getState().doc.id;
+    if (p.remove) {
+      removeOverlay(id);
+      return { overlay: null };
+    }
+    if (p.path) await overlayFromPath(id, p.path);
+    else if (p.fromBoardId) await overlayFromBoard(id, p.fromBoardId);
+    else if (p.referenceId) await overlayFromLibrary(id, p.referenceId);
+    if (!useStore.getState().doc.overlay) throw new Error('This board has no reference yet. Pass path, fromBoardId or referenceId.');
+    const patch = Object.fromEntries((['x', 'y', 'scale', 'opacity', 'mode', 'visible'] as const).filter((k) => p[k] !== undefined).map((k) => [k, p[k]]));
+    if (Object.keys(patch).length) patchOverlay(id, patch);
+    return { overlay: useStore.getState().doc.overlay };
+  },
+
+  async compare_overlay() {
+    const { url: _url, ratio: _ratio, key: _key, base64, ...report } = await compareOverlay(useStore.getState().doc.id, { picture: true });
+    return { ...report, summary: overlaySummary({ ...report, url: '', ratio: 1, key: '' }), images: base64 ? [{ base64, mime: 'image/jpeg' }] : [] };
   },
 
   async render_slides(p) {

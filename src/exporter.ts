@@ -199,6 +199,18 @@ export async function renderBoardStripBase64(boardId: string, maxSide = 2400): P
   });
 }
 
+/** The whole board on a canvas at 1x, or smaller when that wouldn't fit one (`ratio` says how much). */
+export async function renderBoardCanvas(boardId: string, maxSide = 8000): Promise<{ canvas: HTMLCanvasElement; ratio: number }> {
+  useBoard(boardId);
+  await quiesce();
+  const s = useStore.getState();
+  const W = s.doc.slideWidth * s.doc.slides.length;
+  const H = s.doc.slideHeight;
+  const ratio = Math.min(1, maxSide / Math.max(W, H));
+  const o = activeOrigin();
+  return withOffscreenLayer(async (layer) => ({ canvas: render(layer, { x: o.x, y: o.y, w: W, h: H }, ratio, 'jpeg'), ratio }));
+}
+
 /** Base64 JPEG renders for automation (Claude looks at these). */
 export async function renderSlidesBase64(indices: number[], scale = 0.4, boardId?: string): Promise<{ index: number; mime: string; base64: string }[]> {
   useBoard(boardId);

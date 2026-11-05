@@ -264,9 +264,26 @@ export interface Doc {
   assets: Record<string, AssetMeta>;
   /** Order of photos in the Photos tray. */
   assetOrder: string[];
+  /** A past design laid over the board for comparing. Never exported. */
+  overlay?: BoardOverlay;
 }
 
 export type Board = Doc;
+
+export interface BoardOverlay {
+  /** The picture, in `assets` but not the Photos tray. */
+  assetId: string;
+  name: string;
+  /** Top left on the board, in board px. */
+  x: number;
+  y: number;
+  /** Board px per picture px. */
+  scale: number;
+  opacity: number;
+  /** fade: see through it. difference: what matches goes black. changes: marks what differs. */
+  mode: 'fade' | 'difference' | 'changes';
+  visible: boolean;
+}
 
 export interface EmailMeta {
   subject?: string;

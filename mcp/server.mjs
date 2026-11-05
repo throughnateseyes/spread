@@ -184,7 +184,7 @@ ${COORDS}`,
 
 // Safety hints on every tool, so clients can ask less often: looking is read-only, and only a few
 // tools can lose work (deleting rows or layers, replacing the open project).
-const READ_ONLY_TOOLS = new Set(['spread_preview_email', 'spread_list_styles', 'spread_list_links', 'spread_list_projects', 'spread_list_library', 'spread_guide', 'spread_get_state', 'spread_list_boards', 'spread_get_feedback', 'spread_render_overview', 'spread_render_slides', 'spread_list_email_templates', 'spread_email_html', 'spread_list_fonts', 'spread_lint', 'spread_pdf_text', 'spread_list_brands', 'spread_get_brand']);
+const READ_ONLY_TOOLS = new Set(['spread_compare_overlay', 'spread_preview_email', 'spread_list_styles', 'spread_list_links', 'spread_list_projects', 'spread_list_library', 'spread_guide', 'spread_get_state', 'spread_list_boards', 'spread_get_feedback', 'spread_render_overview', 'spread_render_slides', 'spread_list_email_templates', 'spread_email_html', 'spread_list_fonts', 'spread_lint', 'spread_pdf_text', 'spread_list_brands', 'spread_get_brand']);
 const DESTRUCTIVE_TOOLS = new Set(['spread_delete_board', 'spread_delete_nodes', 'spread_new_project', 'spread_open_project']);
 function tool(name, config, cb) {
   const readOnly = READ_ONLY_TOOLS.has(name);
@@ -688,6 +688,44 @@ tool(
 );
 
 tool(
+  'spread_set_overlay',
+  {
+    title: 'Set a board reference overlay',
+    description: "Lays a past design over a board (active, or boardId) to compare against, for any board kind. It sits above the canvas, is saved with the board, and never reaches an export. Give one source: path (a PNG/JPG, or an .html email, photographed at 640px with its pictures found beside the file), fromBoardId (another board), or referenceId (a saved reference from spread_list_library). The picture is fitted to the board's width unless you pass scale. Call again without a source to adjust it: x, y (board px), scale (board px per picture px), opacity 0-1, mode ('fade', 'difference', 'changes'), visible. remove: true takes it off. Returns { overlay }.",
+    inputSchema: {
+      path: z.string().optional(),
+      fromBoardId: z.string().optional(),
+      referenceId: z.string().optional(),
+      x: z.number().optional(),
+      y: z.number().optional(),
+      scale: z.number().positive().optional(),
+      opacity: z.number().min(0).max(1).optional(),
+      mode: z.enum(['fade', 'difference', 'changes']).optional(),
+      visible: z.boolean().optional(),
+      remove: z.boolean().optional(),
+      boardId,
+    },
+  },
+  passthrough('set_overlay'),
+);
+
+tool(
+  'spread_compare_overlay',
+  {
+    title: 'Measure a board against its reference',
+    description: 'Compares a board (active, or boardId) with its reference from spread_set_overlay, pixel by pixel. Returns { summary, width, height, referenceHeight, changedPercent, uncoveredPercent, regionCount, regions: [{ x, y, w, h, percent, layers: [{ id, name }] }] (the 12 biggest, in board px), drift: [{ fromY, toY, shift }] (bands of the board that sit shift px lower than the reference, negative for higher) } plus a picture of the board with changes in magenta. A section that moved shows up in drift, so fix the drift from the top down before reading regions. Read-only.',
+    inputSchema: { boardId },
+    annotations: { readOnlyHint: true },
+  },
+  handle(async (args) => {
+    const { images = [], ...r } = (await rpc('compare_overlay', args, 180_000)) ?? {};
+    const content = [{ type: 'text', text: JSON.stringify(r) }];
+    for (const img of images) content.push({ type: 'image', data: img.base64, mimeType: img.mime ?? 'image/jpeg' });
+    return { content };
+  }),
+);
+
+tool(
   'spread_export_slides',
   {
     title: 'Export slides',
@@ -708,7 +746,7 @@ tool(
 // Email boards (e-blasts)
 // ---------------------------------------------------------------------------
 
-const EMAIL = `EMAIL BOARDS: kind 'email', 600px wide, height grows with content. One root auto-layout column frame whose children are sections (frames named "Section / …"). Edit with the normal node tools (spread_update_nodes by id/key; spread_add_nodes with parentId = a section or the root). Facts in template copy are {{TOKENS}} — replace every one with real values (export warns about leftovers). For grids of similar cards (listings, events), build one card and fill the rest with spread_repeat. Name repeated type (Body, Section heading) with spread_save_styles so one change reaches every layer. Set a layer's link with the link prop on spread_add_nodes / spread_update_nodes, and check them all with spread_list_links. Tracking tags for every link go on the board (spread_update_board tracking). Older [link:URL] name tags still work; setting link replaces them. Layer-name tags the compiler reads: [alt:…] (image alt text), [button], [stack]/[nostack] (row frames stack on phones or not), [raster] (flatten to a picture). Images must be on public URLs: export with host: 'wordpress' when the user has connected WordPress (Spread uploads them and fills in the URLs); otherwise export once, the user uploads the image folder, then re-export with baseUrl. The board carries the subject and preview text (spread_update_board subject/preheader); export uses them. spread_render_slides shows the canvas; spread_preview_email shows the real HTML on desktop and phone, with fallback fonts and with images off, so run it before export.`;
+const EMAIL = `EMAIL BOARDS: kind 'email', 600px wide, height grows with content. One root auto-layout column frame whose children are sections (frames named "Section / …"). Edit with the normal node tools (spread_update_nodes by id/key; spread_add_nodes with parentId = a section or the root). Facts in template copy are {{TOKENS}} — replace every one with real values (export warns about leftovers). For grids of similar cards (listings, events), build one card and fill the rest with spread_repeat. Name repeated type (Body, Section heading) with spread_save_styles so one change reaches every layer. Set a layer's link with the link prop on spread_add_nodes / spread_update_nodes, and check them all with spread_list_links. Tracking tags for every link go on the board (spread_update_board tracking). Older [link:URL] name tags still work; setting link replaces them. Layer-name tags the compiler reads: [alt:…] (image alt text), [button], [stack]/[nostack] (row frames stack on phones or not), [raster] (flatten to a picture). Images must be on public URLs: export with host: 'wordpress' when the user has connected WordPress (Spread uploads them and fills in the URLs); otherwise export once, the user uploads the image folder, then re-export with baseUrl. The board carries the subject and preview text (spread_update_board subject/preheader); export uses them. spread_render_slides shows the canvas; spread_preview_email shows the real HTML on desktop and phone, with fallback fonts and with images off, so run it before export. To match a past email, lay it over the board with spread_set_overlay and measure with spread_compare_overlay instead of writing your own scripts.`;
 
 const emailOpts = {
   baseUrl: z.string().optional().describe('Public folder URL the exported images will live at; image src = baseUrl + file name.'),

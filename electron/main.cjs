@@ -5,6 +5,7 @@ const fs = require('fs');
 const http = require('http');
 const os = require('os');
 const path = require('path');
+const { pathToFileURL } = require('url');
 const { DEV, SPREAD_DIR } = require('./paths.cjs');
 const claude = require('./claude.cjs');
 const brands = require('./brands.cjs');
@@ -272,19 +273,30 @@ ipcMain.handle('print-pdf', async (_e, { html, widthIn, heightIn }) => {
   }
 });
 
-// Photographs self-contained HTML (an email preview) at a real viewport width, for Claude to look at.
-ipcMain.handle('render-html', async (_e, { html, width, height, maxHeight = 6000 }) => {
+// Photographs HTML at a real viewport width: an email preview for Claude, or a past email to compare
+// against. Scripts stay off, since a past email can come from anywhere. height 0 fits the whole page,
+// and relative pictures resolve against dir.
+ipcMain.handle('render-html', async (_e, { html, width, height = 0, maxHeight = 6000, dir, format = 'jpeg' }) => {
+  const head = `${dir ? `<base href="${pathToFileURL(dir + path.sep).href}">` : ''}<meta http-equiv="Content-Security-Policy" content="script-src 'none'">`;
+  const page = /<head[^>]*>/i.test(html) ? html.replace(/<head[^>]*>/i, (m) => m + head) : head + html;
   const tmp = path.join(os.tmpdir(), `spread-render-${process.pid}-${Date.now()}.html`);
-  await fs.promises.writeFile(tmp, html, 'utf8');
-  const h = Math.max(1, Math.min(height, maxHeight));
-  const pw = new BrowserWindow({ show: false, width, height: h, useContentSize: true, enableLargerThanScreen: true, webPreferences: { offscreen: true, sandbox: true } });
+  await fs.promises.writeFile(tmp, page, 'utf8');
+  const pw = new BrowserWindow({ show: false, width, height: Math.max(1, Math.min(height || 100, maxHeight)), useContentSize: true, enableLargerThanScreen: true, webPreferences: { offscreen: true, sandbox: true } });
+  const painted = 'new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))';
   try {
     await pw.loadFile(tmp);
+    // A slow or dead picture host shouldn't hold this up.
     await pw.webContents.executeJavaScript(
-      'document.fonts.ready.then(() => Promise.all([...document.images].map((i) => i.decode().catch(() => null)))).then(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))))',
+      `Promise.race([new Promise((r) => setTimeout(r, 15000)), document.fonts.ready.then(() => Promise.all([...document.images].map((i) => i.decode().catch(() => null))))]).then(() => ${painted})`,
     );
+    let h = Math.min(height, maxHeight);
+    if (!h) {
+      h = Math.max(1, Math.min(await pw.webContents.executeJavaScript('Math.ceil(document.documentElement.scrollHeight)'), maxHeight));
+      pw.setContentSize(width, h);
+      await pw.webContents.executeJavaScript(painted);
+    }
     const shot = await pw.webContents.capturePage({ x: 0, y: 0, width, height: h });
-    return new Uint8Array(shot.toJPEG(85));
+    return new Uint8Array(format === 'png' ? shot.toPNG() : shot.toJPEG(85));
   } finally {
     pw.destroy();
     fs.promises.unlink(tmp).catch(() => {});

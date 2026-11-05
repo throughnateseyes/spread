@@ -178,3 +178,17 @@
 .token-scroll { overflow-y: auto; max-height: 200px; }
 .token-sample { max-width: 280px; overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .token-look { color: var(--muted); font-size: 11px; white-space: nowrap; }
+
+/* Reference overlay */
+.ref-overlay { position: absolute; left: 0; top: 0; max-width: none; transform-origin: 0 0; pointer-events: none; user-select: none; }
+.ref-drop { display: flex; flex-direction: column; gap: 8px; border-radius: var(--radius); }
+.ref-drop.over { outline: 1px dashed var(--accent); outline-offset: 4px; }
+.ref-head { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.ref-name { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 12px; }
+.ref-report { display: flex; flex-direction: column; gap: 4px; font-size: 12px; line-height: 16px; }
+.ref-report p { margin: 0; color: var(--muted); }
+.ref-report p:first-child { color: var(--text); }
+.ref-area { display: flex; justify-content: space-between; gap: 8px; width: 100%; padding: 4px 8px; border: 0; border-radius: var(--radius); background: var(--panel-2); color: inherit; font: inherit; font-size: 12px; text-align: left; cursor: pointer; }
+.ref-area:hover { box-shadow: inset 0 0 0 1px var(--border); }
+.ref-area span:first-child { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.ref-area span:last-child { flex: none; color: var(--muted); font-variant-numeric: tabular-nums; }

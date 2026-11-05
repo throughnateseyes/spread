@@ -93,6 +93,7 @@ async function packTemplate(board: Doc, nodes: SceneNode[]): Promise<Uint8Array>
   b.nodes = deepClone(nodes);
   b.status = null;
   b.statusReason = null;
+  delete b.overlay; // a working comparison, not part of the design
   b.assets = Object.fromEntries(metas.map((m) => [m.id, m]));
   b.assetOrder = metas.filter((m) => m.kind === 'image').map((m) => m.id);
   const tokens = carriedBy(useStore.getState().project, nodes);
