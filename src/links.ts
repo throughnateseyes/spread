@@ -41,6 +41,8 @@ export function linkIssue(url: string): LinkIssue | null {
   const u = url.trim();
   if (!u || u === '#') return 'empty';
   if (/\{\{.*\}\}/.test(u)) return 'placeholder';
+  // A sending tool's own merge tag, which it swaps for the real link.
+  if (/^(%%[^%]+%%|\*\|[^|]+\|\*)$/.test(u)) return null;
   return /^(https?:\/\/\S+|mailto:\S+|tel:\S+)$/i.test(u) ? null : 'invalid';
 }
 

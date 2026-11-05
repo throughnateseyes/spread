@@ -138,6 +138,8 @@ The flow:
 3. It renders the email to look at it, then compiles the HTML to check for warnings (missing alt text, dead links, size over Gmail's 102 KB clip).
 4. It exports with your WordPress connected: the images go to the media library and `email.html` points at them. Paste it into your email tool.
 
+**Send check** is pinned at the top of the right panel on email boards, whatever is selected. Subject, unsubscribe, mailing address, links and alt text each show a tick or a warning, and clicking one goes to the problem. Claude reads the same list with `spread_send_check`. The address check looks in the footer: if yours isn't recognised, name its layer “Mailing address”.
+
 **Preview** in the top bar shows the real HTML the way inboxes will: the inbox line, desktop and phone widths, fallback fonts and images off, with a short list of what changes. Claude gets the same view with `spread_preview_email`. It's one browser engine, not Outlook or Gmail themselves, so still send yourself a test.
 
 **History** in the left panel lists who changed what, you or Claude, on the whole project, one board or the selected layers. Click a line to jump to the layer. It's saved with the project (the last 1000 changes), and Claude can read it with `spread_history`.

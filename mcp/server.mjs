@@ -185,7 +185,7 @@ ${COORDS}`,
 
 // Safety hints on every tool, so clients can ask less often: looking is read-only, and only a few
 // tools can lose work (deleting rows or layers, replacing the open project).
-const READ_ONLY_TOOLS = new Set(['spread_history', 'spread_compare_overlay', 'spread_preview_email', 'spread_list_styles', 'spread_list_links', 'spread_list_projects', 'spread_list_library', 'spread_guide', 'spread_get_state', 'spread_list_boards', 'spread_get_feedback', 'spread_render_overview', 'spread_render_slides', 'spread_list_email_templates', 'spread_email_html', 'spread_list_fonts', 'spread_lint', 'spread_pdf_text', 'spread_list_brands', 'spread_get_brand']);
+const READ_ONLY_TOOLS = new Set(['spread_send_check', 'spread_history', 'spread_compare_overlay', 'spread_preview_email', 'spread_list_styles', 'spread_list_links', 'spread_list_projects', 'spread_list_library', 'spread_guide', 'spread_get_state', 'spread_list_boards', 'spread_get_feedback', 'spread_render_overview', 'spread_render_slides', 'spread_list_email_templates', 'spread_email_html', 'spread_list_fonts', 'spread_lint', 'spread_pdf_text', 'spread_list_brands', 'spread_get_brand']);
 const DESTRUCTIVE_TOOLS = new Set(['spread_delete_board', 'spread_delete_nodes', 'spread_new_project', 'spread_open_project']);
 function tool(name, config, cb) {
   const readOnly = READ_ONLY_TOOLS.has(name);
@@ -827,6 +827,17 @@ tool(
     annotations: { readOnlyHint: true },
   },
   passthrough('email_html'),
+);
+
+tool(
+  'spread_send_check',
+  {
+    title: 'Check an email is ready to send',
+    description: "The five things that must be right before an email goes out, the same list the user sees pinned in the app: subject (and preview text), unsubscribe, mailing address, links and alt text. Returns { ready, toFix, checks: [{ id, level: 'ok'|'note'|'fix', title, detail, ids }] }, where ids are the layers each check is about. ready means nothing is at 'fix'. The address check reads the footer, or a layer named 'Mailing address'. Read-only.",
+    inputSchema: { boardId },
+    annotations: { readOnlyHint: true },
+  },
+  passthrough('send_check'),
 );
 
 tool(

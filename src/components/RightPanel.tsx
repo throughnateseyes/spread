@@ -1,5 +1,5 @@
 import { RepeatSection } from './RepeatDialog';
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { MOD, useLayout, useStore } from '../store';
 import { absoluteBox, inAutoLayout, type LayoutMap } from '../layout';
 import { findNode, findParent, pathTo } from '../tree';
@@ -17,6 +17,7 @@ import { OverlaySection } from './OverlayPanel';
 import { fallbackStack, isWebSafe } from '../email/html';
 import { Tooltip } from '../ui/Tooltip';
 import { LastChange } from './HistoryTab';
+import { SendChecklist } from './SendChecklist';
 import {
   ICON_DENSE,
   IconAlignBottom,
@@ -86,6 +87,7 @@ export default function RightPanel() {
             Design
           </button>
         </div>
+        <SendChecklist />
         <div className="panel-scroll design">{selNodes.length ? <SelectionPanel sel={selNodes} /> : <DocumentPanel />}</div>
       </div>
     </SwatchContext.Provider>
@@ -130,6 +132,12 @@ function InboxSection() {
   const doc = useStore((s) => s.doc);
   const meta = doc.email ?? {};
   const set = (patch: Partial<NonNullable<typeof doc.email>>) => useStore.getState().updateBoard(doc.id, { email: { ...meta, ...patch } });
+  const subject = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    const focus = () => subject.current?.focus();
+    window.addEventListener('spread:focus-subject', focus);
+    return () => window.removeEventListener('spread:focus-subject', focus);
+  }, []);
   const count = (v: string | undefined, max: number) => {
     const n = v?.length ?? 0;
     return <span className={`inbox-count ${n > max ? 'warn' : ''}`}>{n}/{max}</span>;
@@ -139,7 +147,7 @@ function InboxSection() {
       <label className="inbox-field">
         <span className="inbox-label">Subject {count(meta.subject, 60)}</span>
         <div className="field">
-          <input value={meta.subject ?? ''} placeholder="What makes them open it" onChange={(e) => set({ subject: e.target.value })} />
+          <input ref={subject} value={meta.subject ?? ''} placeholder="What makes them open it" onChange={(e) => set({ subject: e.target.value })} />
         </div>
       </label>
       <label className="inbox-field">

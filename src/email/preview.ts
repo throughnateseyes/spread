@@ -154,6 +154,8 @@ export interface InboxCheck {
   detail: string;
   /** The view that shows this. */
   view: Partial<InboxView>;
+  /** Layers it's about, when that's known. */
+  ids?: string[];
 }
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
@@ -166,7 +168,7 @@ function textIn(n: SceneNode): string {
   return out.join(' ').replace(/\s+/g, ' ');
 }
 
-function imagesCheck(root: FrameNode, images: EmailImage[]): InboxCheck {
+export function imagesCheck(root: FrameNode, images: EmailImage[]): InboxCheck {
   const view = { images: false };
   if (!images.length) return { id: 'images', level: 'ok', title: 'No pictures', detail: 'This email reads the same with images off.', view };
   // Pictures whose words vanish with the picture, unless the layer says them in its alt text.
@@ -174,9 +176,9 @@ function imagesCheck(root: FrameNode, images: EmailImage[]): InboxCheck {
     .filter((im) => im.rasterize)
     .map((im) => {
       const n = findNode([root], im.nodeId);
-      return n && !parseNameTags(n.name).alt ? { name: parseNameTags(n.name).clean || 'A frame', words: textIn(n) } : null;
+      return n && !parseNameTags(n.name).alt ? { id: im.nodeId, name: parseNameTags(n.name).clean || 'A frame', words: textIn(n) } : null;
     })
-    .filter((x): x is { name: string; words: string } => !!x?.words);
+    .filter((x): x is { id: string; name: string; words: string } => !!x?.words);
   const blank = images.filter((im) => (!im.alt || /\{\{/.test(im.alt)) && (!im.rasterize || im.href));
   const deadLinks = blank.filter((im) => im.href).length;
   const lines: string[] = [];
@@ -184,7 +186,8 @@ function imagesCheck(root: FrameNode, images: EmailImage[]): InboxCheck {
   if (deadLinks) lines.push(`${plural(deadLinks, 'linked picture')} ${deadLinks === 1 ? 'has' : 'have'} no alt text, so there's nothing to click.`);
   if (blank.length > deadLinks) lines.push(`${plural(blank.length - deadLinks, 'picture')} ${blank.length - deadLinks === 1 ? 'has' : 'have'} no alt text. Rename the layer to describe it.`);
   if (!lines.length) return { id: 'images', level: 'ok', title: 'Reads with images off', detail: `${plural(images.length, 'picture')}, all covered by alt text or live text.`, view };
-  return { id: 'images', level: flattened.length || deadLinks ? 'fix' : 'note', title: 'Images off loses something', detail: lines.join(' '), view };
+  const ids = [...new Set([...flattened.map((f) => f.id), ...blank.map((im) => im.nodeId)])];
+  return { id: 'images', level: flattened.length || deadLinks ? 'fix' : 'note', title: 'Images off loses something', detail: lines.join(' '), view, ids };
 }
 
 function phoneCheck(m: Measure): InboxCheck {
@@ -211,10 +214,11 @@ function fontsCheck(fonts: string[], metrics: InboxMetrics): InboxCheck {
   };
 }
 
-function rowCheck(root: FrameNode, subject: string, preheader: string): InboxCheck {
+export function rowCheck(root: FrameNode, subject: string, preheader: string): InboxCheck {
   const view: Partial<InboxView> = {};
   const s = subject.trim();
   if (!s) return { id: 'row', level: 'fix', title: 'No subject', detail: 'Add one in the Inbox section.', view };
+  if (/\{\{/.test(`${s} ${preheader}`)) return { id: 'row', level: 'fix', title: 'Inbox line has a placeholder', detail: 'Fill in the {{TOKEN}} in the subject or preview text.', view };
   if (!preheader.trim()) {
     const words = firstWords(root, 50);
     return { id: 'row', level: 'note', title: 'No preview text', detail: words ? `Inboxes will show the opening words instead: “${words}”.` : 'Inboxes will fill the line with whatever comes first.', view };

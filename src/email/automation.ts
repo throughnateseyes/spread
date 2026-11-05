@@ -6,6 +6,7 @@ import { buildEmailHtml, collectEmailImages, joinUrl } from './html';
 import { fontSwaps, inboxChecks, inboxHtml, inboxMetrics, measureHtml, viewWidth, type InboxDevice, type InboxFonts, type InboxSource, type InboxView } from './preview';
 import { renderEmailImages } from './images';
 import { EMAIL_SECTIONS, EMAIL_TEMPLATES } from './templates';
+import { sendChecks } from './checklist';
 import { createEmailBoard, emailRootOf, insertEmailSection } from './boards';
 import { hostEmailImages } from './hosting';
 import { createFromTemplate, insertSavedSection, useLibrary } from '../library';
@@ -95,6 +96,13 @@ export const emailHandlers: Record<string, (p: Params) => Promise<unknown> | unk
       images: result.images.map((i) => ({ nodeId: i.nodeId, fileName: i.fileName, alt: i.alt, width: i.width, height: i.height })),
       html: result.html.length > max ? result.html.slice(0, max) + '\n<!-- …truncated -->' : result.html,
     };
+  },
+
+  /** The five things to get right before sending, as the strip in the app shows them. */
+  send_check() {
+    const { doc, root } = activeEmailRoot();
+    const checks = sendChecks(doc, root, currentLayout());
+    return { ready: !checks.some((c) => c.level === 'fix'), toFix: checks.filter((c) => c.level === 'fix').length, checks: checks.map(({ label: _label, ...c }) => c) };
   },
 
   /** The compiled email as an inbox shows it: checks always, pictures when the desktop app can take them. */
