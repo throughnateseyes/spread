@@ -148,6 +148,21 @@ export interface TextNode extends BaseNode {
   decoration: 'none' | 'underline' | 'line-through';
   /** The text style this layer follows (see tokens.ts). Values that differ from it stay as they are. */
   textStyle?: string;
+  /**
+   * Styled ranges inside the text (a bold word in a sentence). Offsets are UTF-16 indices into
+   * `text`, end exclusive; anything a span leaves out comes from the layer. See richtext.ts.
+   */
+  spans?: TextSpan[];
+}
+
+/** A range of a text layer styled differently from the rest of it. */
+export interface TextSpan {
+  start: number;
+  end: number;
+  fontWeight?: number;
+  italic?: boolean;
+  fill?: string;
+  decoration?: 'none' | 'underline' | 'line-through';
 }
 
 export interface ShapeNode extends BaseNode {

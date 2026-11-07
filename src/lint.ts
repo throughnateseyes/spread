@@ -53,6 +53,7 @@ export function lintBoard(doc: Doc, layout: LayoutMap, brand: Brand | null = nul
   const issues: LintIssue[] = [];
   lintWeights(doc, issues);
   lintRepeats(doc, issues);
+  lintGrouping(doc, issues);
   if (project) lintStyles(doc, project, issues);
   if (doc.kind === 'email') {
     lintLinks(doc, issues);
@@ -285,6 +286,47 @@ function lintLinks(doc: Doc, issues: LintIssue[]) {
   for (const l of collectLinks(doc.nodes)) {
     if (l.issue) issues.push({ severity: 'warn', rule: 'link', message: `Link on "${l.name}": ${LINK_ISSUE_TEXT[l.issue]}.`, page: null, ids: [l.id], keys: [l.key] });
   }
+}
+
+/**
+ * Grouping (proximity): space inside a group must be smaller than the space around it, or the
+ * eye can't tell what belongs together. Two cases auto layout makes easy to get wrong:
+ * - a heading, its subtitle or meta line, and then the body, all one even gap apart;
+ * - a group of texts spaced as loosely as (or looser than) the groups beside it.
+ */
+function lintGrouping(doc: Doc, issues: LintIssue[]) {
+  const name = (n: SceneNode) => (n.key ? `"${n.key}"` : n.type === 'text' ? `"${n.text.slice(0, 28).replace(/\n/g, ' ')}${n.text.length > 28 ? '…' : ''}"` : `"${n.name}"`);
+  const add = (message: string, nodes: SceneNode[]) =>
+    issues.push({ severity: 'warn', rule: 'grouping', message, page: null, ids: nodes.map((n) => n.id), keys: nodes.map((n) => n.key ?? null) });
+  const firstText = (n: SceneNode): TextNode | null => (n.type === 'text' ? n : n.type === 'frame' && n.layout !== 'none' ? (n.children.find((c) => c.visible && c.type === 'text') as TextNode | undefined) ?? null : null);
+  walk(doc.nodes, (f) => {
+    if (!f.visible) return false;
+    if (f.type !== 'frame' || f.layout !== 'column' || f.justify === 'between' || f.gap <= 0) return;
+    const kids = f.children.filter((c) => c.visible);
+    // Heading + subtitle/meta + more, evenly spaced.
+    for (let i = 0; i + 2 < kids.length; i++) {
+      const h = kids[i];
+      const sub = kids[i + 1];
+      if (h.type !== 'text' || sub.type !== 'text' || !h.text.trim() || !sub.text.trim()) continue;
+      const heading = h.fontSize >= sub.fontSize * 1.3 && h.fontSize >= 16;
+      const short = sub.text.trim().length <= 140;
+      if (heading && short) {
+        add(
+          `${name(h)} and the line under it, ${name(sub)}, are ${f.gap} apart, the same as the space to what follows. Put the two in their own column frame with a tighter gap (about a third to half of ${f.gap}) so they read as one unit.`,
+          [h, sub],
+        );
+        i++;
+      }
+    }
+    // A group of texts spaced no tighter than the space around it.
+    for (const c of kids) {
+      if (c.type !== 'frame' || c.layout !== 'column' || c.justify === 'between') continue;
+      const inner = c.children.filter((x) => x.visible);
+      if (inner.length < 2 || !inner.every((x) => x.type === 'text' || (x.type === 'frame' && !!firstText(x)))) continue;
+      if (c.gap >= f.gap)
+        add(`${name(c)} spaces its lines ${c.gap} apart, no tighter than the ${f.gap} around it, so it doesn't read as a group. Inside a group the gap should be smaller than between groups (roughly 1:2 to 1:3).`, [c]);
+    }
+  });
 }
 
 /**

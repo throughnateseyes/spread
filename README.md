@@ -43,8 +43,8 @@ To build an installer, run `npm run dist:win` (NSIS installer plus a portable `.
    - Double-click a photo to crop it: the whole photo shows past the frame; drag to reposition, drag a corner or use the slider to zoom.
    - Drag photos from the tray onto a slide, or onto an existing photo to replace it. Shift-drag one photo onto another to swap them.
    - Hold **Alt** to measure distances to the slide edges; pink guides show equal spacing.
-   - Press **T** for text. Double-click text to edit it.
-   - Select some layers and press **Shift+A** to wrap them in auto layout (price pills, stat rows).
+   - Press **T** for text. Double-click text to edit it. Highlight a few words and press **Ctrl+B / I / U** to bold, italicize or underline just those; with nothing highlighted it styles the whole layer. Copy, cut, paste, select all and undo work inside the text as in any editor.
+   - Select some layers and press **Shift+A** to wrap them in auto layout (price pills, stat rows). Like Figma, it keeps the arrangement: stacked layers become a column, side-by-side ones a row, two layers keep their exact gap, three or more get one even gap, and the edge they share becomes the alignment. Shift+A on a plain frame turns it into auto layout in place, keeping its padding.
    - Turn on the layout grid (**Ctrl+'**) and things snap to columns, slide edges, seams and other layers.
 4. **Preview**: swipe through it in an Instagram phone mock, including the 3:4 profile-grid crop.
 5. **Export**: 1x, 2x or 3x PNG or JPG, one file per slide, plus an optional full-strip panorama.
@@ -74,6 +74,7 @@ Click **Claude** in the top bar (or press **Ctrl+J**) to open a chat beside the 
 - **Design docs.** Link a brand kit to its `DESIGN.md` (under **Brands**), or put a `DESIGN.md` next to the `.spread` file. Claude reads it before designing. Your `CLAUDE.md` applies too, because Claude Code runs in the project's folder.
 - **References.** Drop files or folders onto the panel (or use the paperclip) to hand them to Claude.
 - **One conversation per project.** It picks up where you left off when you reopen the file. **New chat** starts over.
+- **It learns your taste.** When a piece is finished, Claude reads what you changed by hand after its last edit (a gap you tightened, a font you swapped, an ornament you deleted) and saves the lessons as design notes in `~/.spread/design-notes.md`. Every later design turn starts from them. Edit or prune the file any time.
 - **A senior designer, not a generator.** New work starts with a short brief as tappable question cards (goal, channel, how many directions, which territory), then named direction concepts for you to approve before anything is built. Starter flows on the empty panel (listing carousel, open house flyer, e-blast, campaign, resume) kick this off. The playbook is `.claude/skills/spread-director/`, served to every Claude as `spread_guide('director')`.
 
 ### The Claude desktop app and Claude Code

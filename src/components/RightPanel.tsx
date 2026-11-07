@@ -1041,15 +1041,11 @@ function FrameSection({ sel, upd }: { sel: FrameNode[]; upd: (fn: (n: SceneNode)
               className="small"
               title="Add auto layout"
               shortcut="Shift+A"
-              onClick={() =>
-                fr((n) => {
-                  n.layout = 'row';
-                  if (n.children.length) {
-                    n.sizingH = 'hug';
-                    n.sizingV = 'hug';
-                  }
-                })
-              }
+              onClick={() => {
+                // Same as Shift+A: keep each frame's children where they are.
+                const s = useStore.getState();
+                for (const f of sel) s.addAutoLayout(f.id);
+              }}
             >
               <IconPlus size={D} />
             </IconButton>

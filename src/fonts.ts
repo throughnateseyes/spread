@@ -17,6 +17,7 @@ import '@fontsource/bebas-neue/400.css';
 import { fontWeightRange } from './assets';
 import { useStore } from './store';
 import { findNode, walk } from './tree';
+import { withoutSpanProp } from './richtext';
 import type { Doc, TextNode } from './types';
 
 export interface FontOption {
@@ -141,12 +142,33 @@ export function toggleBoldSelection() {
       const weights = fontWeights(n.fontFamily, s.doc);
       if (turnOn) n.fontWeight = boldWeightFor(weights) ?? n.fontWeight;
       else n.fontWeight = nearestWeight(weights, 400);
+      // The whole layer is now one weight: drop weights set on parts of it.
+      n.spans = withoutSpanProp(n, 'fontWeight');
     },
   );
   if (single.length) {
     const fam = fontLabel(single[0].fontFamily);
     s.toast(`${fam} only comes in one weight. For a bold serif, try Playfair Display or Fraunces.`);
   }
+  return true;
+}
+
+/** ⌘I / ⌘U on selected text layers (or the one being edited, when nothing in it is highlighted). */
+export function toggleStyleSelection(kind: 'italic' | 'underline') {
+  const s = useStore.getState();
+  const ids = s.editingTextId && !s.selection.includes(s.editingTextId) ? [...s.selection, s.editingTextId] : s.selection;
+  const texts = ids.map((id) => findNode(s.doc.nodes, id)).filter((n): n is TextNode => n?.type === 'text');
+  if (!texts.length) return false;
+  const on = kind === 'italic' ? !texts.every((n) => n.italic) : !texts.every((n) => n.decoration === 'underline');
+  s.updateNodes(
+    texts.map((n) => n.id),
+    (n) => {
+      if (n.type !== 'text') return;
+      if (kind === 'italic') n.italic = on;
+      else n.decoration = on ? 'underline' : 'none';
+      n.spans = withoutSpanProp(n, kind === 'italic' ? 'italic' : 'decoration');
+    },
+  );
   return true;
 }
 
@@ -159,7 +181,14 @@ const loaded = new Set<string>();
 export async function ensureDocFonts(doc: Doc) {
   const specs = new Set<string>();
   walk(doc.nodes, (n) => {
-    if (n.type === 'text') specs.add(`${n.italic ? 'italic ' : ''}${n.fontWeight} 32px "${n.fontFamily}"`);
+    if (n.type === 'text') {
+      specs.add(`${n.italic ? 'italic ' : ''}${n.fontWeight} 32px "${n.fontFamily}"`);
+      // Styled ranges can use other weights and italics of the same family.
+      for (const sp of n.spans ?? []) {
+        const it = sp.italic ?? n.italic;
+        specs.add(`${it ? 'italic ' : ''}${sp.fontWeight ?? n.fontWeight} 32px "${n.fontFamily}"`);
+      }
+    }
   });
   const fresh = [...specs].filter((s) => !loaded.has(s));
   if (!fresh.length) return;

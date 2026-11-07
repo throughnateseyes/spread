@@ -4,7 +4,7 @@ import type { AssetMeta, CanvasComment, Doc, FrameNode, Project, SceneNode, Tool
 import type { CommentDraft } from './comments';
 import { CHANGE_LIMIT, describeChanges, type ChangeEntry } from './history';
 import { cloneBoard, cloneWithNewIds, collectAssetIds, deepClone, findNode, locate, makeDoc, makeFrame, makeProject, pathTo, removeNodes, uid, walk } from './tree';
-import { absoluteBox, contentBottom, getLayout } from './layout';
+import { absoluteBox, contentBottom, getLayout, inferAutoLayout } from './layout';
 import { removeAsset } from './assets';
 import { syncRepeats } from './repeat';
 import { syncTokens } from './tokens';
@@ -21,6 +21,8 @@ export interface BoardEditLog {
   userEditsSinceClaude: number;
   /** Layers the user had selected while editing by hand (best-effort). */
   userTouchedIds: string[];
+  /** The board as Claude last left it, so its hand edits since can be described exactly. */
+  claudeBoard?: Doc;
 }
 
 /** >0 while an automation (Claude) request is being applied. */
@@ -136,6 +138,8 @@ interface State {
   wrapSelectionInFrame: (auto: boolean) => void;
   /** Wraps sibling layers in a new frame and returns its id. `patch` overrides the frame's defaults. */
   wrapNodes: (ids: string[], auto: boolean, patch?: Partial<FrameNode>) => string | null;
+  /** Turns a plain frame into auto layout that keeps its children where they are (Figma's Shift+A on a frame). */
+  addAutoLayout: (frameId: string) => void;
   ungroup: (id: string) => void;
   addAssets: (metas: AssetMeta[]) => void;
   removeTrayAssets: (ids: string[]) => void;
@@ -212,7 +216,7 @@ export const useStore = create<State>((set, get) => {
       // Only design changes count: picking, rejecting, renaming or noting a row is not a hand edit.
       if (old && old.nodes === b.nodes && old.slides === b.slides && old.background === b.background) continue;
       const e = editLog[b.id] ?? { claudeAt: null, userEditsSinceClaude: 0, userTouchedIds: [] };
-      if (byClaude) editLog[b.id] = { claudeAt: now, userEditsSinceClaude: 0, userTouchedIds: [] };
+      if (byClaude) editLog[b.id] = { claudeAt: now, userEditsSinceClaude: 0, userTouchedIds: [], claudeBoard: b };
       else {
         const touched = new Set(e.userTouchedIds);
         for (const id of s.selection) touched.add(id);
@@ -454,7 +458,16 @@ export const useStore = create<State>((set, get) => {
     });
   },
   wrapSelectionInFrame: (auto) => {
-    const id = get().wrapNodes(get().selection, auto);
+    const s = get();
+    // One plain frame selected: Shift+A gives it auto layout instead of wrapping it in another frame.
+    if (auto && s.selection.length === 1) {
+      const only = findNode(s.doc.nodes, s.selection[0]);
+      if (only?.type === 'frame' && only.layout === 'none' && !only.repeat) {
+        s.addAutoLayout(only.id);
+        return;
+      }
+    }
+    const id = s.wrapNodes(s.selection, auto);
     if (id) set({ selection: [id] });
   },
   wrapNodes: (sel, auto, patch) => {
@@ -476,23 +489,27 @@ export const useStore = create<State>((set, get) => {
       clip: false,
       padding: auto ? { t: 0, r: 0, b: 0, l: 0 } : { t: 24, r: 24, b: 24, l: 24 },
     });
+    let order: string[] | null = null;
     if (auto) {
-      const horiz = x1 - x0 >= y1 - y0;
-      frame.layout = horiz ? 'row' : 'column';
+      // Keep the arrangement: direction, spacing and shared edge come from where the layers sit now.
+      const force = patch?.layout === 'row' || patch?.layout === 'column' ? patch.layout : undefined;
+      const inferred = inferAutoLayout(
+        siblings.map((id) => ({ id, ...layout.get(id)! })).filter((b) => b.w !== undefined),
+        force,
+      );
+      frame.layout = inferred.layout;
+      frame.gap = inferred.gap;
+      frame.alignItems = inferred.alignItems;
       frame.sizingH = 'hug';
       frame.sizingV = 'hug';
+      order = inferred.order;
     }
     Object.assign(frame, patch);
     s.change((d) => {
       const loc = locate(d.nodes, sel[0])!;
       const picked = loc.list
         .filter((n) => siblings.includes(n.id))
-        .sort((a, b) => {
-          if (!auto) return 0;
-          const ba = layout.get(a.id)!;
-          const bb = layout.get(b.id)!;
-          return frame.layout === 'row' ? ba.x - bb.x : ba.y - bb.y;
-        });
+        .sort((a, b) => (order ? order.indexOf(a.id) - order.indexOf(b.id) : 0));
       const insertAt = Math.max(...siblings.map((id) => loc.list.findIndex((n) => n.id === id)));
       const f = structuredClone(frame);
       for (const p of picked) {
@@ -508,6 +525,39 @@ export const useStore = create<State>((set, get) => {
       loc.list.splice(at, 0, f as FrameNode);
     });
     return frame.id;
+  },
+  addAutoLayout: (frameId) => {
+    const s = get();
+    const layout = getLayout(s.doc.nodes, s.fontsVersion);
+    const f0 = findNode(s.doc.nodes, frameId);
+    const fb = layout.get(frameId);
+    if (!f0 || f0.type !== 'frame' || f0.layout !== 'none' || !fb) return;
+    const kids = f0.children.filter((c) => c.visible && layout.get(c.id));
+    const boxes = kids.map((c) => ({ id: c.id, ...layout.get(c.id)! }));
+    const inferred = inferAutoLayout(boxes);
+    s.change((d) => {
+      const f = findNode(d.nodes, frameId) as FrameNode | null;
+      if (!f || f.type !== 'frame') return;
+      f.layout = inferred.layout;
+      if (boxes.length) {
+        // Padding is the space the children already leave inside the frame, so it keeps its size.
+        const cx0 = Math.min(...boxes.map((b) => b.x));
+        const cy0 = Math.min(...boxes.map((b) => b.y));
+        const cx1 = Math.max(...boxes.map((b) => b.x + b.w));
+        const cy1 = Math.max(...boxes.map((b) => b.y + b.h));
+        const r = (v: number) => Math.max(0, Math.round(v * 2) / 2);
+        f.padding = { t: r(cy0), r: r(fb.w - cx1), b: r(fb.h - cy1), l: r(cx0) };
+        f.gap = inferred.gap;
+        f.alignItems = inferred.alignItems;
+        f.sizingH = 'hug';
+        f.sizingV = 'hug';
+        const rank = (id: string) => {
+          const i = inferred.order.indexOf(id);
+          return i < 0 ? Number.MAX_SAFE_INTEGER : i;
+        };
+        f.children.sort((a, b) => rank(a.id) - rank(b.id));
+      }
+    });
   },
   ungroup: (id) => {
     const s = get();
