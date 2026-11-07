@@ -54,6 +54,18 @@ Exact spacing comes from auto layout, not from hand-placed coordinates.
 - Make a `frame` per column with `layout: 'column'`, a `gap` from the spacing scale, `sizingV: 'hug'`, and `fill: null`. Put sections inside as column frames, and entries inside those.
 - An entry heading with the dates flush right is a `layout: 'row'` frame with `justify: 'between'`: role and organisation on the left, dates on the right.
 - **Proximity:** the gap inside a group is smaller than the gap between groups. Roughly 1:2 or 1:3, for example 4 inside an entry, 12 between entries, 24 between sections.
+- **Build the hierarchy as nested groups, never one flat column.** Senior designers space by meaning, not evenly. A heading and the line that belongs to it (subtitle, dateline, meta, eyebrow) are one group: put them in their own column frame with a tight gap. That group sits further from the body than its parts sit from each other. The ladder for a typical page:
+  - eyebrow or meta to heading: 4–8pt (or a third of the heading's size)
+  - heading group to body: 2–3× that, 24–40pt on a Letter page
+  - paragraph to paragraph: about one line of body (12–16pt)
+  - section to section: the biggest step, 32–48pt
+  - a sign-off or a contact block is its own tight group (0–4pt between its lines)
+
+  One `column` frame per group, nested inside the page column, so every gap in the tree is a decision. If every child in a frame shares one gap, ask whether they really are equals. `spread_lint` flags a heading, its subtitle and the body spaced evenly (`grouping`).
+- **Emphasis inside a sentence** is a span, not a second text layer: `spans: [{ match: 'will be towed', fontWeight: 700 }]`. Bold the few words that carry the consequence or the action, never a whole paragraph of body.
+- **Restraint by default.** Every rule, accent bar, eyebrow and label has to earn its place. If the content already says it (the garage name in the body), don't repeat it as an eyebrow. When in doubt, leave the ornament out: users delete these more than they add them.
+- **Display type gets tightened.** A serif or sans headline at 32pt and up reads better with negative tracking (−2% to −4%) and a line height of 1.0–1.15; body text stays at 0 to −1%.
+- **Auto layout keeps the arrangement.** `spread_wrap_nodes` reads the direction, gap and alignment from where the layers already sit (as Figma's Shift+A does), so place them first, then wrap; pass `gap` only to change it.
 - Text that wraps needs `sizingH: 'fixed'` and a `w`, or `sizingH: 'fill'` inside an auto-layout column. Keep body lines at 45–90 characters.
 - Always set `fontFamily`, `fontWeight` (text defaults to 600, too heavy for body copy), `fontSize`, `lineHeight` and `fill` on every text layer.
 - Give every frame and text layer a `key`. Build a whole section in one `spread_add_nodes` call with nested `children`.
@@ -71,7 +83,7 @@ Answer each in a sentence while looking at the render. Pass 5 of 6 before showin
 1. **Scan path:** in 6 seconds, does the eye go to the right three things in order? For a resume: name, then current or target role, then the section heads.
 2. **Hierarchy:** one dominant element, with clear steps down in size, weight or color. No two things compete.
 3. **Alignment:** one or two strong vertical axes that everything hangs from. No near misses.
-4. **Proximity and rhythm:** spacing makes the groups obvious, and identical things are styled identically.
+4. **Proximity and rhythm:** spacing makes the groups obvious (heading with its meta, then a bigger step to the body), and identical things are styled identically.
 5. **Restraint:** at most two families, one accent color, no decoration without a job.
 6. **One distinctive move:** something a template wouldn't do, that serves the content. For example: hanging dates in the left margin, an oversized name set small and tracked, a hairline rule system, a strong left rail, a bold use of white space.
 
@@ -86,6 +98,7 @@ Answer each in a sentence while looking at the render. Pass 5 of 6 before showin
 - a photo on a US resume, unless asked
 - text baked into images
 - clip-art dividers
+- a heading, its subtitle and the body spaced by one even gap
 - headings that cost more space than they save
 
 ## 6. Directions, the critic, and iteration

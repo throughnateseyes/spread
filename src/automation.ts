@@ -1,6 +1,7 @@
+import { normaliseSpans, remapSpans, resolveSpanInput } from './richtext';
 import { emailHandlers } from './email/automation';
 import { createFromTemplate, libraryForClaude, saveReference, saveTemplate } from './library';
-import { useStore, currentLayout, boardFrames, asClaude, fitVariations } from './store';
+import { useStore, currentLayout, boardFrames, asClaude, fitVariations, type BoardEditLog } from './store';
 import { collectLinks, nodeLink, setNodeLink, withTracking } from './links';
 import { cloneBoard, cloneWithNewIds, collectAssetIds, findNode, findParent, makeDoc, makeDocumentBoard, makeEmailBoard, makeFrame, makeImage, makeProject, makeShape, makeText, uid, walk } from './tree';
 import { absoluteBoxes } from './render';
@@ -10,7 +11,7 @@ import { clearAssets, isFontFile, isHeic, isImageFile, registerFont, registerIma
 import { applyArrange, arrangeBoxes, ARRANGE_MODES, type ArrangeMode } from './arrange';
 import { exportSlides, renderBoardStripBase64, renderSlidesBase64 } from './exporter';
 import { exportPdf } from './pdf';
-import { filterChanges, timeAgo } from './history';
+import { describeBoardEdits, filterChanges, timeAgo } from './history';
 import { lintBoard } from './lint';
 import { compareOverlay, overlayFromBoard, overlayFromLibrary, overlayFromPath, overlaySummary, patchOverlay, removeOverlay } from './overlay';
 import { photoCell } from './importer';
@@ -62,7 +63,20 @@ function normalisePatch(type: SceneNode['type'], p: Params) {
   if (type === 'image' && out.effects) out.effects = (out.effects as Params[]).map(toEffect);
   delete out.textStyle;
   delete out.space;
+  delete out.spans;
   return out;
+}
+
+/**
+ * Styled ranges on a text layer after a spec was applied. `spans` in the spec replaces them
+ * (located by match text or offsets); otherwise a text change carries them along with the words.
+ */
+function applySpans(n: SceneNode, spec: Params, before: string | null) {
+  if (n.type !== 'text') return;
+  if ('spans' in spec) n.spans = spec.spans ? resolveSpanInput(n.text, spec.spans) : undefined;
+  else if (before !== null && before !== n.text) n.spans = remapSpans(before, n.text, n.spans);
+  n.spans = n.spans ? normaliseSpans(n) : undefined;
+  if (!n.spans) delete n.spans;
 }
 
 function resolveAssetId(v: unknown): string | null {
@@ -140,6 +154,7 @@ function fromSpec(spec: Params): SceneNode {
   }
   linkTokens(n, spec);
   Object.assign(n, normalisePatch(n.type, spec));
+  applySpans(n, spec, null);
   if (n.type === 'frame' && Array.isArray(spec.children)) n.children = spec.children.map(fromSpec);
   return n;
 }
@@ -389,10 +404,30 @@ function applyChanges(d: Doc, changes: Params[], idMap: Map<string, string>): st
       if (n.type === 'text' && 'w' in u && !('sizingH' in u) && n.sizingH === 'hug') patch.sizingH = 'fixed';
       if (n.type === 'frame' && Array.isArray(u.children)) n.children = u.children.map(fromSpec);
       linkTokens(n, u);
+      const before = n.type === 'text' ? n.text : null;
       Object.assign(n, patch);
+      applySpans(n, u, before);
     }
   }
   return missing;
+}
+
+/**
+ * What the user changed on a board by hand since Claude last touched it, in plain lines. These are
+ * corrections to Claude's work (tightened a gap, swapped a weight), the raw material for design notes.
+ */
+function handEditsOf(b: Doc, log: BoardEditLog | undefined): string[] {
+  if (!log?.userEditsSinceClaude) return [];
+  if (log.claudeBoard) return describeBoardEdits(log.claudeBoard, b);
+  // Reopened since Claude's edit: fall back to the saved change log.
+  const s = useStore.getState();
+  const mine = s.changes.filter((c) => c.boardId === b.id);
+  const lastClaude = mine.map((c) => c.who).lastIndexOf('claude');
+  return mine
+    .slice(lastClaude + 1)
+    .filter((c) => c.who === 'you' && !c.undo)
+    .flatMap((c) => c.lines.map((l) => (l.layer ? `${l.layer}: ${l.what}` : l.what)))
+    .slice(-60);
 }
 
 const handlers: Record<string, (p: Params) => Promise<unknown> | unknown> = {
@@ -584,6 +619,7 @@ const handlers: Record<string, (p: Params) => Promise<unknown> | unknown> = {
           claudeLastEditedAt: log?.claudeAt ? new Date(log.claudeAt).toISOString() : null,
           userEditsSinceClaude: log?.userEditsSinceClaude ?? 0,
           userTouched: (log?.userTouchedIds ?? []).map((id) => findNode(b.nodes, id)).filter(Boolean).map((n) => nodeBrief(n as SceneNode)),
+          handEdits: handEditsOf(b, log),
         };
       }),
     };
@@ -686,7 +722,9 @@ const handlers: Record<string, (p: Params) => Promise<unknown> | unknown> = {
         if (n.type === 'text' && 'w' in u && !('sizingH' in u) && n.sizingH === 'hug') patch.sizingH = 'fixed';
         if (n.type === 'frame' && Array.isArray(u.children)) n.children = u.children.map(fromSpec);
         linkTokens(n, u);
+        const before = n.type === 'text' ? n.text : null;
         Object.assign(n, patch);
+        applySpans(n, u, before);
         if ('link' in u) setNodeLink(n, u.link ?? null);
         updated++;
         }
@@ -705,7 +743,7 @@ const handlers: Record<string, (p: Params) => Promise<unknown> | unknown> = {
     if (parents.size > 1) throw new Error('These layers have different parents. Wrap layers that sit side by side in the same frame.');
     const auto = spec.layout !== 'none';
     delete spec.boardId;
-    const id = s.wrapNodes(ids, auto, normalisePatch('frame', { gap: 0, padding: 0, ...spec }) as Partial<FrameNode>);
+    const id = s.wrapNodes(ids, auto, normalisePatch('frame', { padding: 0, ...spec }) as Partial<FrameNode>);
     return { id, wrapped: ids.length };
   },
 

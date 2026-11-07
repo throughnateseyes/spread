@@ -6,7 +6,7 @@ import { saveProject, openProject } from './project';
 import { closeTab, cycleTab, switchTo, useWorkspace } from './workspace';
 import { openSwitcher } from './components/Switcher';
 import { pasteClipboard } from './clipboard';
-import { toggleBoldSelection } from './fonts';
+import { toggleBoldSelection, toggleStyleSelection } from './fonts';
 import type { Tool } from './types';
 import { isElectron } from './platform';
 import { toggleChat } from './components/ClaudePanel';
@@ -27,7 +27,8 @@ export const SHORTCUTS: [string, string][] = [
   ['Ctrl+Alt+D', 'Duplicate board as a variation row'],
   ['Alt+↑ / Alt+↓', 'Previous / next board'],
   ['Double-click text', 'Edit text'],
-  ['Ctrl+B', 'Bold selected text (fonts that have a bold weight)'],
+  ['Ctrl+B / I / U', 'Bold / italic / underline: the highlighted words while editing text, else the whole layer'],
+  ['Ctrl+C / X / V / A / Z (editing text)', 'Copy, cut, paste, select all and undo inside the text'],
   ['Double-click photo / Enter', 'Crop (drag to pan, scroll to zoom)'],
   ['Double-click frame', 'Select child'],
   ['Ctrl+click', 'Deep select'],
@@ -79,7 +80,8 @@ export function installShortcuts() {
       openProject();
       return;
     }
-    if (isElectron && !s.modal) {
+    // While editing text on the canvas, app-level combos (tabs, switcher) stay out of the way.
+    if (isElectron && !s.modal && !s.editingTextId) {
       if (mod && (k === 'k' || k === 't')) {
         e.preventDefault();
         openSwitcher();
@@ -111,9 +113,11 @@ export function installShortcuts() {
       toggleChat();
       return;
     }
-    // Bold also works while editing text on the canvas (it applies to the whole layer).
-    if (mod && k === 'b' && !e.altKey && !s.modal && (s.editingTextId || !isTyping())) {
-      if (toggleBoldSelection()) e.preventDefault();
+    // Bold, italic and underline. While editing text, highlighted words are styled by the text
+    // editor itself; what reaches here (nothing highlighted, or layers selected) styles whole layers.
+    if (mod && !e.altKey && !e.shiftKey && (k === 'b' || k === 'i' || k === 'u') && !s.modal && (s.editingTextId || !isTyping())) {
+      const done = k === 'b' ? toggleBoldSelection() : toggleStyleSelection(k === 'i' ? 'italic' : 'underline');
+      if (done) e.preventDefault();
       return;
     }
     // macOS only gives these to text fields through a menu, and the app menu leaves them out.

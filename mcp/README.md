@@ -35,7 +35,7 @@ Every tool carries MCP safety hints: looking tools are marked read-only, and onl
 | `spread_guide` | The design workflow and quality bar for a medium (`document`, `carousel`, `eblast`); the same text as the skills. Also offered as the prompts `spread-document`, `spread-carousel`, `spread-eblast` |
 | `spread_get_state` | One board: slides, node tree with absolute boxes, selection, photo tray, plus the list of all boards. `detail: 'outline'` trims the tree to ids, names and boxes |
 | `spread_list_links` | Every link on a board, with empty, placeholder and invalid ones flagged |
-| `spread_wrap_nodes` | Wrap existing layers in a frame or auto layout frame without rebuilding them |
+| `spread_wrap_nodes` | Wrap existing layers in a frame or auto layout frame without rebuilding them; auto layout keeps their direction, gap and alignment, like Figma's Shift+A |
 | `spread_repeat` | Fill a grid from data: one card plus rows, with photos from links or files |
 | `spread_list_styles` | Text styles and spacing tokens, plus text that has no style yet |
 | `spread_save_styles` | Add or change named styles; every linked layer on every board follows |
@@ -71,7 +71,9 @@ A project holds several boards stacked as rows on one canvas. Each board is a `c
 | `spread_activate_board` | Make a row active (the app highlights it) |
 | `spread_create_board` | Add an empty carousel, email or document row (document: page presets for print and screen, page count, margins, baseline grid) |
 | `spread_make_variants` | **The ideation tool.** Copy a row once per variant and restyle each copy in one call: `arrange` (re-lay out photos in place; the slide count fits the new layout, captions follow their photo, last-slide layers move to the new last slide), `changes` by key, `add`. Copies land below the source; the user's focus is untouched; one undo step per variant |
-| `spread_get_feedback` | What the user said with the mouse: active row, selection, picked/rejected rows, hand edits since Claude's last change (`userTouched`) |
+| `spread_get_feedback` | What the user said with the mouse: active row, selection, picked/rejected rows, hand edits since Claude's last change (`userTouched`, and `handEdits`: the net changes in words) |
+| `spread_design_notes` | The user's design notes: lessons from finished work, kept across projects (also appended to every `spread_guide`) |
+| `spread_add_design_notes` | Save lessons from a finished piece (or rewrite the notes) |
 | `spread_duplicate_board` | Plain copy of a row N times, with `names[]` and `notes[]`; copies land directly below |
 | `spread_update_board` | Rename a row, edit its note, or set its `status` (`picked` / `rejected` / null) |
 | `spread_delete_board` | Delete a row (not the last one) |

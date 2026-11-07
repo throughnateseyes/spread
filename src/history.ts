@@ -113,7 +113,14 @@ function layerChanges(a: SceneNode, b: SceneNode, free: boolean, styleName: (id?
     else if (k === 'crop') out.push('Changed the crop');
     else if (k === 'adjust') out.push('Adjusted the photo');
     else if (k === 'shadow') out.push(q ? 'Changed the shadow' : 'Removed the shadow');
-    else if (k === 'padding') out.push('Changed padding');
+    else if (k === 'padding') {
+      const pad = (v: unknown) => {
+        const x = v as { t: number; r: number; b: number; l: number } | undefined;
+        if (!x) return 'none';
+        return x.t === x.b && x.l === x.r ? (x.t === x.l ? `${round(x.t)}` : `${round(x.t)}/${round(x.l)}`) : `${round(x.t)} ${round(x.r)} ${round(x.b)} ${round(x.l)}`;
+      };
+      out.push(from('Padding', pad(p), pad(q)));
+    } else if (k === 'spans') out.push(q ? 'Styled part of the text' : 'Cleared the styled words');
     else if (k === 'space') out.push('Changed spacing tokens');
     else if (k === 'repeat') out.push(q ? 'Changed the card table' : 'Stopped repeating');
     else if (k === 'uppercase') out.push(q ? 'Uppercase on' : 'Uppercase off');
@@ -281,6 +288,15 @@ export function describeChanges(prev: Project, next: Project): Described[] {
     if (lines.length) out.push(capped(b.id, b.name, lines));
   }
   return out;
+}
+
+/**
+ * A board's net changes from `a` to `b` as plain lines ("“Title block”: Gap 16 → 12"). Spread uses
+ * it to show Claude what the user changed by hand after Claude's last edit, so it can learn from it.
+ */
+export function describeBoardEdits(a: Doc, b: Doc, max = 60): string[] {
+  const lines = boardLines(a, b, true, (id) => id).map((l) => (l.layer ? `${l.layer}: ${l.what}` : l.what));
+  return lines.length > max ? [...lines.slice(0, max), `…and ${lines.length - max} more`] : lines;
 }
 
 /** Anything from a project file that looks like a log. */

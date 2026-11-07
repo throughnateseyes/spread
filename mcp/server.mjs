@@ -11,7 +11,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
-import { readFile } from 'node:fs/promises';
+import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { homedir } from 'node:os';
@@ -27,6 +27,16 @@ const REPO_DIR = resolve(HERE, '..');
 const SPREAD_DIR = process.env.SPREAD_HOME || join(homedir(), '.spread');
 const BRIDGE_FILE = join(SPREAD_DIR, 'bridge.json');
 const APP_FILE = join(SPREAD_DIR, 'app.json');
+// What finished work taught Claude about this user's taste (spacing, type, detail), kept across projects.
+const NOTES_FILE = join(SPREAD_DIR, 'design-notes.md');
+const NOTE_AREAS = ['hierarchy', 'spacing', 'type', 'color', 'layout', 'detail', 'copy', 'process'];
+async function readNotes() {
+  try {
+    return (await readFile(NOTES_FILE, 'utf8')).trim();
+  } catch {
+    return '';
+  }
+}
 const NOT_RUNNING = `Spread isn't running. Call spread_launch, or ask the user to open the Spread app.`;
 
 class BridgeError extends Error {}
@@ -104,11 +114,17 @@ const GUIDES = {
 async function readGuide(topic) {
   const { skill } = GUIDES[topic];
   for (const p of [join(HERE, 'guides', `${skill}.md`), join(REPO_DIR, '.claude', 'skills', skill, 'SKILL.md')]) {
+    let guide;
     try {
-      return (await readFile(p, 'utf8')).replace(/^---\n[\s\S]*?\n---\n+/, '');
+      guide = (await readFile(p, 'utf8')).replace(/^---\n[\s\S]*?\n---\n+/, '');
     } catch {
-      // try the next location
+      continue; // try the next location
     }
+    // Every guide ends with what this user's finished work has taught so far.
+    const notes = await readNotes();
+    return notes
+      ? `${guide}\n\n## This user's design notes\n\nLearned from their finished work and hand edits. Follow them; where they disagree with the defaults above, they win.\n\n${notes}\n`
+      : guide;
   }
   throw new BridgeError(`The ${topic} guide is missing from this install.`);
 }
@@ -143,7 +159,7 @@ const COLORS = `COLORS: '#RRGGBB' or '#RRGGBBAA'. Text 'fill' is a color string.
 
 const NODE_SPEC = `NODE SPEC fields (all optional except type):
 - common: key (stable role name, see KEYS), name, link (email boards: the URL this layer and everything inside it goes to; null removes it), x, y, w, h, rotation (deg), opacity (0–1), visible, locked, sizingH/sizingV ('fixed'|'hug'|'fill'; 'fill' only inside auto layout; 'hug' for text and auto layout frames), shadow {enabled, color, x, y, blur}.
-- text: text (use \\n for line breaks), fontFamily (call spread_list_fonts; bundled: 'Inter Variable', 'DM Sans Variable', 'Space Grotesk Variable', 'Archivo Variable', 'Playfair Display Variable', 'Fraunces Variable', 'DM Serif Display', 'Instrument Serif', 'Bebas Neue'), fontWeight (100–900; default 600, so always set it for body copy), italic, fontSize (px), lineHeight (multiplier, e.g. 1.1), letterSpacing (percent of size, Figma-style, e.g. -2), align ('left'|'center'|'right'|'justify'), fill (color), uppercase, decoration ('none'|'underline'|'line-through'). Text hugs its content by default; set sizingH:'fixed' and w to wrap at a width. textStyle: a style's name (see spread_list_styles) sets its font, weight, size, line height, letter spacing and case, and the layer follows later changes to it; values passed beside it stay as that layer's own; null unlinks. Color and alignment are never part of a style.
+- text: text (use \\n for line breaks), fontFamily (call spread_list_fonts; bundled: 'Inter Variable', 'DM Sans Variable', 'Space Grotesk Variable', 'Archivo Variable', 'Playfair Display Variable', 'Fraunces Variable', 'DM Serif Display', 'Instrument Serif', 'Bebas Neue'), fontWeight (100–900; default 600, so always set it for body copy), italic, fontSize (px), lineHeight (multiplier, e.g. 1.1), letterSpacing (percent of size, Figma-style, e.g. -2), align ('left'|'center'|'right'|'justify'), fill (color), uppercase, decoration ('none'|'underline'|'line-through'). Text hugs its content by default; set sizingH:'fixed' and w to wrap at a width. textStyle: a style's name (see spread_list_styles) sets its font, weight, size, line height, letter spacing and case, and the layer follows later changes to it; values passed beside it stay as that layer's own; null unlinks. Color and alignment are never part of a style. spans: style part of the text, like one bold word in a sentence: [{ match: 'Resident Services', fontWeight: 700 }] (match = a piece of the text, first occurrence; all: true for every one), or [{ start, end, ... }] offsets. Each span sets any of fontWeight, italic, fill, decoration; the rest comes from the layer. Spans follow the words when the text changes; pass spans: null to clear them. Use this instead of splitting a sentence into several text layers.
 - image: assetId (from spread_get_state photos / spread_import_photos; null = empty placeholder), fit ('fill' crops to cover | 'fit'), crop {zoom ≥1, cx, cy} (focal point 0–1), radius, flipX, flipY, adjust {brightness, contrast, saturation} (each -1..1), effects (array, run in order, non-destructive, omitted fields use defaults): [{ type:'dither', pattern 'ordered'|'diffusion'|'noise', size (cell in layer px, 1-24), levels (2-8), mode 'duotone'|'photo', ink, paper, enabled, name }, { type:'grain', amount 0-1, size (1-8), enabled, name }, { type:'blur', mode 'even'|'progressive', amount (radius in layer px, 1-120), direction 'top'|'bottom'|'left'|'right' (side the blur grows towards), start 0-0.9 (how much stays sharp), enabled, name }]. Send the whole array when changing it, stroke, strokeWidth.
 - rect / ellipse: fill (Paint), stroke, strokeWidth, radius, backdropBlur (blurs what's behind it, layer px 0-120; needs a see-through fill, e.g. '#FFFFFF33').
 - frame: space ({ gap, padding, paddingX, paddingY } naming spacing tokens; sets those values and follows later changes to the token; null unlinks), fill (Paint|null; default null, so a frame is see-through until you give it one), radius, clip, stroke, strokeWidth, backdropBlur, layout ('none'|'row'|'column' = auto layout), gap (default 0), padding (number, {x,y} or {t,r,b,l}; default 0), alignItems ('start'|'center'|'end'), justify ('start'|'center'|'end'|'between'), children (NodeSpec[]).`;
@@ -176,6 +192,7 @@ Ideation ("give me 3 directions"): plan each direction's idea first, then build 
 E-blast: spread_list_email_templates (the user's saved: templates first) → spread_create_email {template} → fill every {{TOKEN}} with spread_update_nodes → spread_update_board {subject, preheader} → spread_render_slides (look) → spread_preview_email (the real HTML on desktop and phone; fix its checks) → spread_email_html (fix warnings, stay under 100 KB) → spread_export_email {host: 'wordpress'} (or, without WordPress, export → user uploads → export again with baseUrl).
 LIBRARY: the user's saved templates and references (spread_list_library). Before designing something new, look at the references of the same kind (Read their images) and follow what the user said makes them good. When the user loves a result, offer once to save it as a reference (spread_save_reference) or a template (spread_save_template).
 When something looks unexpected, spread_history says who changed it and when.
+DESIGN NOTES: the user's taste, learned from finished work, rides along at the end of every spread_guide. When a project wraps (a row picked as final, or "we're done"), read get_feedback's handEdits on that row: they are the corrections the user made to your work. Turn the ones that generalize into rules with spread_add_design_notes and say in a line what you saved.
 Follow-up turns: call spread_get_feedback FIRST, unless a <spread-context> block (Spread's own chat panel) shows nothing changed since your last turn (picked/rejected rows, current selection, hand edits). Never overwrite layers listed in userTouched without asking; leave rejected rows alone.
 When the user says "this", "the selected text" or "this row", the selection and activeBoardId from spread_get_feedback (or spread_get_state) are the referent. Rows are lettered A, B, C… from the top.
 ${BOARDS}
@@ -185,7 +202,7 @@ ${COORDS}`,
 
 // Safety hints on every tool, so clients can ask less often: looking is read-only, and only a few
 // tools can lose work (deleting rows or layers, replacing the open project).
-const READ_ONLY_TOOLS = new Set(['spread_send_check', 'spread_history', 'spread_compare_overlay', 'spread_preview_email', 'spread_list_styles', 'spread_list_links', 'spread_list_projects', 'spread_list_library', 'spread_guide', 'spread_get_state', 'spread_list_boards', 'spread_get_feedback', 'spread_render_overview', 'spread_render_slides', 'spread_list_email_templates', 'spread_email_html', 'spread_list_fonts', 'spread_lint', 'spread_pdf_text', 'spread_list_brands', 'spread_get_brand']);
+const READ_ONLY_TOOLS = new Set(['spread_design_notes', 'spread_send_check', 'spread_history', 'spread_compare_overlay', 'spread_preview_email', 'spread_list_styles', 'spread_list_links', 'spread_list_projects', 'spread_list_library', 'spread_guide', 'spread_get_state', 'spread_list_boards', 'spread_get_feedback', 'spread_render_overview', 'spread_render_slides', 'spread_list_email_templates', 'spread_email_html', 'spread_list_fonts', 'spread_lint', 'spread_pdf_text', 'spread_list_brands', 'spread_get_brand']);
 const DESTRUCTIVE_TOOLS = new Set(['spread_delete_board', 'spread_delete_nodes', 'spread_new_project', 'spread_open_project']);
 function tool(name, config, cb) {
   const readOnly = READ_ONLY_TOOLS.has(name);
@@ -226,6 +243,46 @@ tool(
     annotations: { readOnlyHint: true },
   },
   handle(async ({ topic }) => text(await readGuide(topic))),
+);
+
+tool(
+  'spread_design_notes',
+  {
+    title: 'Design notes',
+    description: "Returns the user's design notes: what their finished work and hand edits have taught about their taste in spacing, hierarchy, type and detail, kept across every project. spread_guide already appends them; call this to review them before writing new ones. Read-only; works without the app running.",
+    inputSchema: {},
+    annotations: { readOnlyHint: true },
+  },
+  handle(async () => text((await readNotes()) || 'No design notes yet.')),
+);
+
+tool(
+  'spread_add_design_notes',
+  {
+    title: 'Save design notes',
+    description: `Saves lessons from a finished design to the user's design notes, which every later design turn reads (spread_guide appends them). Use it when a project wraps up (a row is picked as final, or the user says it's done) or when the user asks you to remember a design lesson. Source the notes from what actually happened: get_feedback's handEdits on the final row (what they corrected by hand after you), their pick and reject reasons, and what they said. Write each note as a rule with numbers that transfers to the next job ("Title and its meta line sit 8pt apart, 32pt to the body; hierarchy groups, not one even gap"), not a description of this one piece. One idea per note, no duplicates of notes already saved (read spread_design_notes first). Tell the user in a line what you saved. Pass rewrite instead to replace the whole file when merging or pruning notes the user asked to change. Returns the saved notes.`,
+    inputSchema: {
+      notes: z
+        .array(z.object({ area: z.enum(NOTE_AREAS), note: z.string().min(8), from: z.string().optional().describe('The project or piece it came from') }))
+        .optional(),
+      rewrite: z.string().optional().describe('Replaces every note with this markdown (one "- [area] note" per line)'),
+    },
+  },
+  handle(async ({ notes, rewrite }) => {
+    await mkdir(SPREAD_DIR, { recursive: true });
+    if (typeof rewrite === 'string') {
+      await writeFile(NOTES_FILE, rewrite.trim() + '\n');
+      return text(await readNotes());
+    }
+    if (!notes?.length) return fail('Pass notes: [{ area, note }] or rewrite.');
+    const have = await readNotes();
+    const day = new Date().toISOString().slice(0, 10);
+    const fresh = notes.filter((n) => !have.toLowerCase().includes(n.note.trim().toLowerCase()));
+    if (!fresh.length) return text('Those notes are already saved.');
+    const lines = fresh.map((n) => `- [${n.area}] ${n.note.trim().replace(/\s+/g, ' ')}${n.from ? ` (${n.from.trim()}, ${day})` : ` (${day})`}`);
+    await appendFile(NOTES_FILE, (have ? '\n' : '# Design notes\n\n') + lines.join('\n'));
+    return text(await readNotes());
+  }),
 );
 
 // The same guides as prompts, so a newcomer can pick "Spread: Pages" from the client's prompt menu.
@@ -346,7 +403,7 @@ tool(
   'spread_wrap_nodes',
   {
     title: 'Wrap layers in a frame',
-    description: "Wraps existing layers in a new frame without rebuilding them; they keep their ids, keys and content. Pass ids and/or keys of layers that share a parent. layout 'row' or 'column' makes it auto layout, ordered by position (omit to pick from their arrangement); 'none' makes a plain frame that keeps them where they are. The frame starts with no fill, gap 0 and padding 0; set those and any other frame props here. Auto layout ignores the layers' old spacing, so pass gap. Returns { id, wrapped }.",
+    description: "Wraps existing layers in a new frame without rebuilding them; they keep their ids, keys and content. Pass ids and/or keys of layers that share a parent. Auto layout keeps the arrangement, like Figma's Shift+A: the direction comes from how the layers are stacked (or pass layout 'row' or 'column'), the gap is the space already between them (two layers keep their exact gap; three or more get one even gap), and the cross alignment is the edge they share. layout 'none' makes a plain frame that keeps them where they are. The frame starts with no fill and padding 0; pass gap, padding or any other frame props to override. Returns { id, wrapped }.",
     inputSchema: {
       boardId,
       ids: z.array(z.string()).optional(),
@@ -455,8 +512,8 @@ tool(
   'spread_get_feedback',
   {
     title: 'Get user feedback (picks, rejects, selection, hand edits)',
-    description: `What the user has said with the mouse since your last change. Call this FIRST on every follow-up turn of an ideation loop, before changing anything. Returns { activeBoardId, selection: [{ id, key, name, type, text }] (layers selected on the active row — what "this" means), boards: [{ id, row (1-based; letter A = row 1), name, note, status ('picked'|'rejected'|null), claudeLastEditedAt, userEditsSinceClaude, userTouched: [{ id, key, name, type, text }] }] }.
-Rules: treat picked rows as the direction to push; leave rejected rows alone unless asked; never overwrite a userTouched layer (or redo a row with userEditsSinceClaude > 0) without asking. Learn from hand edits — e.g. if the user moved the price on B, offer to apply that to the other rows. Read-only: does not move the user's focus.`,
+    description: `What the user has said with the mouse since your last change. Call this FIRST on every follow-up turn of an ideation loop, before changing anything. Returns { activeBoardId, selection: [{ id, key, name, type, text }] (layers selected on the active row — what "this" means), boards: [{ id, row (1-based; letter A = row 1), name, note, status ('picked'|'rejected'|null), claudeLastEditedAt, userEditsSinceClaude, userTouched: [{ id, key, name, type, text }], handEdits: ['“Title block”: Gap 16 → 12', …] (the net changes the user made by hand since your last edit) }] }.
+Rules: treat picked rows as the direction to push; leave rejected rows alone unless asked; never overwrite a userTouched layer (or redo a row with userEditsSinceClaude > 0) without asking. Learn from hand edits — e.g. if the user moved the price on B, offer to apply that to the other rows; when the work is final, save what they teach with spread_add_design_notes. Read-only: does not move the user's focus.`,
     inputSchema: {},
     annotations: { readOnlyHint: true },
   },
@@ -993,7 +1050,7 @@ tool(
   'spread_lint',
   {
     title: 'Check layout (lint)',
-    description: `Runs the app's mechanical layout checks on a board (active, or boardId) and returns { issues: [{ severity 'error'|'warn', rule, message, page, ids, keys }], summary }. Rules: off-page, crosses-page (documents) / crosses-seam (carousels), margin (inside the page margins; carousels use 60), overflow (text cut off by a fixed-height box), tiny-text, line-length (body lines outside ~25–95 characters), widow (one word alone on a paragraph's last line), baseline (text top off the document baseline grid), contrast (below 4.5:1, or 3:1 for large type, against a solid background), overlap (text blocks colliding), text-style (layers that differ from their style), alignment (left edges 0.5–3 units apart: a near miss; right-aligned blocks are judged by their right edge), spacing (with a baseline grid: stacked gaps off the grid; without one: gaps that differ by ≤2 units), type-system (more than 2 families or 6 sizes), empty-page. Run it after every build pass and fix every error before showing the user; warnings need a reason to stay. Read-only.`,
+    description: `Runs the app's mechanical layout checks on a board (active, or boardId) and returns { issues: [{ severity 'error'|'warn', rule, message, page, ids, keys }], summary }. Rules: off-page, crosses-page (documents) / crosses-seam (carousels), margin (inside the page margins; carousels use 60), overflow (text cut off by a fixed-height box), tiny-text, line-length (body lines outside ~25–95 characters), widow (one word alone on a paragraph's last line), baseline (text top off the document baseline grid), contrast (below 4.5:1, or 3:1 for large type, against a solid background), overlap (text blocks colliding), text-style (layers that differ from their style), alignment (left edges 0.5–3 units apart: a near miss; right-aligned blocks are judged by their right edge), spacing (with a baseline grid: stacked gaps off the grid; without one: gaps that differ by ≤2 units), type-system (more than 2 families or 6 sizes), grouping (a heading, its subtitle or meta line and the body all one even gap apart, or a group spaced no tighter than the space around it), empty-page. Run it after every build pass and fix every error before showing the user; warnings need a reason to stay. Read-only.`,
     inputSchema: { boardId },
     annotations: { readOnlyHint: true },
   },

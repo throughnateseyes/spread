@@ -6,6 +6,7 @@ import type { LayoutMap } from '../layout';
 import { displayText, letterSpacingPx, textFontStyle } from '../layout';
 import { cropGeometry, drawSource, ellipsePaintProps, filterString, imageSource, isExporting, paintProps, roundRectPath, shadowProps } from '../render';
 import { backdropScene, hasEffects, paintEffects } from '../effects';
+import { drawRichText, hasSpans } from '../richtext';
 
 export interface RenderState {
   layout: LayoutMap;
@@ -151,6 +152,22 @@ function ImageBody({ n, w, h }: { n: ImageNode; w: number; h: number }) {
 }
 
 function TextBody({ n, w, h, hidden }: { n: TextNode; w: number; h: number; hidden: boolean }) {
+  if (hasSpans(n)) {
+    // Styled ranges: drawn run by run (see richtext.ts), with the same breaks lint and PDF use.
+    return (
+      <>
+        <Rect width={w} height={h} fill="rgba(0,0,0,0)" />
+        <Shape
+          sceneFunc={(kctx: Konva.Context) => drawRichText((kctx as any)._context as CanvasRenderingContext2D, n, w)}
+          width={w}
+          height={h}
+          opacity={hidden ? 0 : 1}
+          perfectDrawEnabled={false}
+          listening={false}
+        />
+      </>
+    );
+  }
   return (
     <>
       <Rect width={w} height={h} fill="rgba(0,0,0,0)" />

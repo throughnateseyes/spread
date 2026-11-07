@@ -73,6 +73,8 @@ A carousel is a **sequence of moves**. Compose with these. They're built from pl
 
 **Type system**: one display face and one text face, at most. Make the pairing do something: extreme scale contrast, italic against upright, condensed against wide. Prefer the user's brand fonts. The bundled faces (Instrument Serif, Fraunces, Playfair, DM Serif, Bebas, Inter, DM Sans, Space Grotesk, Archivo) are fine, but are the faces generated designs reach for, so don't use one by reflex. Pick a size scale before building, for example 24 / 34 / 72 / 260, and stick to it.
 
+**Grouping**: space by meaning. A headline and its label or subline are one group (a tight column frame, 8–16px apart); that group sits 2–3× further from the next block. Never stack headline, subline and body with one even gap. Emphasis inside a sentence is a span (`spans: [{ match: '2 months free', fontWeight: 700 }]`), not a second text layer.
+
 ## 3. The Floor (hygiene: fix silently)
 
 Mechanical checks, done from `spread_get_state` boxes and renders. Never report them as design decisions.

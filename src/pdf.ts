@@ -1,6 +1,7 @@
 import { useStore } from './store';
 import { getAsset, loadFull, allAssets } from './assets';
 import { getLayout, letterSpacingPx, textLines, type LayoutMap } from './layout';
+import { baseStyle, hasSpans, richLines, runCss } from './richtext';
 import { absoluteBoxes, cropGeometry, filterString } from './render';
 import { hasEffects, needsLossless, paintEffects } from './effects';
 import { paintCanvas } from './gradients';
@@ -99,7 +100,27 @@ function textHtml(n: TextNode, b: Box): string {
     (n.shadow?.enabled ? `text-shadow:${pt(n.shadow.x)} ${pt(n.shadow.y)} ${pt(n.shadow.blur)} ${n.shadow.color};` : '');
   // Line breaks are already fixed, so no-break characters can go back to their plain forms: many fonts
   // lack a glyph for U+2011, and a fallback font there splits "Gen‑Z" into separate runs in the PDF text.
-  const lines = textLines(n, b.w).map((l) => ({ ...l, text: l.text.replace(/\u2011/g, '-').replace(/\u00a0/g, ' ') }));
+  const plain = (s: string) => s.replace(/\u2011/g, '-').replace(/\u00a0/g, ' ');
+  if (hasSpans(n)) {
+    // Styled ranges: each line is its runs, every run its own span with what differs from the layer.
+    const base = baseStyle(n);
+    const inner = richLines(n, b.w)
+      .map((l, i) => {
+        const top = `top:${pt(i * lh)};`;
+        const runs = l.segs.map((sg) => {
+          const css = runCss(sg.style, base);
+          return css ? `<span style="${css}">${esc(plain(sg.text))}</span>` : esc(plain(sg.text));
+        });
+        if (n.align === 'justify' && !l.last) {
+          return `<div class="ln" style="${top}left:0;width:${pt(b.w)};text-align:justify;text-align-last:justify;${font}">${runs.join('')}</div>`;
+        }
+        const x = n.align === 'right' ? b.w - l.width : n.align === 'center' ? (b.w - l.width) / 2 : 0;
+        return `<div class="ln" style="${top}left:${pt(x)};${font}">${runs.join('')}</div>`;
+      })
+      .join('');
+    return `<div class="n" style="${boxCss(n, b)}">${inner}</div>`;
+  }
+  const lines = textLines(n, b.w).map((l) => ({ ...l, text: plain(l.text) }));
   const inner = lines
     .map((l, i) => {
       const top = `top:${pt(i * lh)};`;

@@ -1,5 +1,6 @@
 import Konva from 'konva';
 import type { Box, FrameNode, SceneNode, TextNode } from './types';
+import { clearRichCache, hasSpans, measureRich, richLines } from './richtext';
 
 // Layout engine: resolves every node's box (relative to its parent) from stored sizes,
 // hug/fill sizing and auto layout frames. Pure function of the node tree (+ loaded fonts).
@@ -13,6 +14,7 @@ const measureCache = new Map<string, { w: number; h: number }>();
 
 export function clearMeasureCache() {
   measureCache.clear();
+  clearRichCache();
 }
 
 export function textFontStyle(t: TextNode) {
@@ -29,6 +31,8 @@ export function letterSpacingPx(t: TextNode) {
 
 /** Measures text. `width` undefined = no wrapping (auto width). */
 export function measureText(t: TextNode, width?: number): { w: number; h: number } {
+  // Styled ranges change widths (a bold word is wider), so those layers are measured run by run.
+  if (hasSpans(t)) return measureRich(t, width);
   const key = [t.text, t.uppercase, t.fontFamily, t.fontWeight, t.italic, t.fontSize, t.lineHeight, t.letterSpacing, width ?? 'auto'].join('|');
   const hit = measureCache.get(key);
   if (hit) return hit;
@@ -61,6 +65,7 @@ export interface TextLine {
  * export places each one explicitly so line breaks match the canvas, and lint reads them.
  */
 export function textLines(t: TextNode, width: number): TextLine[] {
+  if (hasSpans(t)) return richLines(t, width).map((l) => ({ text: l.text, width: l.width, last: l.last }));
   measurer.setAttrs({
     text: displayText(t) || ' ',
     fontFamily: t.fontFamily,
@@ -222,6 +227,80 @@ export function absoluteBox(map: LayoutMap, path: string[]): Box | null {
     last = b;
   }
   return last ? { x, y, w: last.w, h: last.h } : null;
+}
+
+// ---------- inferring auto layout from an arrangement (Figma's Shift+A) ----------
+
+export interface InferredAutoLayout {
+  layout: 'row' | 'column';
+  gap: number;
+  alignItems: 'start' | 'center' | 'end';
+  /** The ids in the order the auto layout should hold them. */
+  order: string[];
+}
+
+const EDGE_TOLERANCE = 1;
+
+/** Do the boxes, sorted along an axis, sit one after another without overlapping on it? */
+function stacksAlong(boxes: (Box & { id: string })[], row: boolean) {
+  const s = [...boxes].sort((a, b) => (row ? a.x - b.x : a.y - b.y));
+  for (let i = 1; i < s.length; i++) {
+    const prevEnd = row ? s[i - 1].x + s[i - 1].w : s[i - 1].y + s[i - 1].h;
+    if ((row ? s[i].x : s[i].y) < prevEnd - EDGE_TOLERANCE) return false;
+  }
+  return true;
+}
+
+/**
+ * Works out the auto layout that reproduces how layers are already arranged, the way Figma does
+ * when you press Shift+A: the direction they're stacked in, the space between them, and the edge
+ * they line up on. Two layers keep their exact gap. Three or more get one even gap: the shared gap
+ * if they're already evenly spaced, otherwise the average, rounded.
+ */
+export function inferAutoLayout(boxes: (Box & { id: string })[], force?: 'row' | 'column'): InferredAutoLayout {
+  if (!boxes.length) return { layout: 'column', gap: 0, alignItems: 'start', order: [] };
+  const x0 = Math.min(...boxes.map((b) => b.x));
+  const y0 = Math.min(...boxes.map((b) => b.y));
+  const x1 = Math.max(...boxes.map((b) => b.x + b.w));
+  const y1 = Math.max(...boxes.map((b) => b.y + b.h));
+  const asRow = stacksAlong(boxes, true);
+  const asColumn = stacksAlong(boxes, false);
+  let row: boolean;
+  if (force) row = force === 'row';
+  else if (boxes.length === 1) row = x1 - x0 >= y1 - y0;
+  else if (asRow !== asColumn) row = asRow;
+  else {
+    // Both (a diagonal) or neither (overlapping): follow where the centres spread out more.
+    const cx = boxes.map((b) => b.x + b.w / 2);
+    const cy = boxes.map((b) => b.y + b.h / 2);
+    row = Math.max(...cx) - Math.min(...cx) >= Math.max(...cy) - Math.min(...cy);
+  }
+
+  const sorted = [...boxes].sort((a, b) => (row ? a.x - b.x || a.y - b.y : a.y - b.y || a.x - b.x));
+  const gaps: number[] = [];
+  for (let i = 1; i < sorted.length; i++) {
+    const p = sorted[i - 1];
+    const c = sorted[i];
+    gaps.push(row ? c.x - (p.x + p.w) : c.y - (p.y + p.h));
+  }
+  let gap = 0;
+  if (gaps.length === 1) gap = gaps[0];
+  else if (gaps.length > 1) {
+    const even = Math.max(...gaps) - Math.min(...gaps) <= EDGE_TOLERANCE;
+    const mean = gaps.reduce((a, b) => a + b, 0) / gaps.length;
+    gap = even ? gaps[0] : mean;
+  }
+  // Keep half units (points on paper often land on .5), drop float noise.
+  gap = Math.max(0, Math.round(gap * 2) / 2);
+
+  // Cross-axis alignment: the edge the layers share. Start wins ties, as in Figma.
+  const starts = sorted.map((b) => (row ? b.y : b.x));
+  const ends = sorted.map((b) => (row ? b.y + b.h : b.x + b.w));
+  const mids = sorted.map((b) => (row ? b.y + b.h / 2 : b.x + b.w / 2));
+  const same = (v: number[]) => Math.max(...v) - Math.min(...v) <= EDGE_TOLERANCE;
+  const alignItems = boxes.length < 2 || same(starts) ? 'start' : same(mids) ? 'center' : same(ends) ? 'end' : 'start';
+
+  return { layout: row ? 'row' : 'column', gap, alignItems, order: sorted.map((b) => b.id) };
 }
 
 /** Is `id`'s parent an auto layout frame? (Its x/y are then computed, not stored.) */

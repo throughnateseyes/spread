@@ -1,3 +1,4 @@
+import { hasSpans, richHtml } from '../richtext';
 import type { Box, FrameNode, ImageNode, Paint, SceneNode, ShapeNode, TextNode } from '../types';
 import type { LayoutMap } from '../layout';
 import { getAsset } from '../assets';
@@ -534,10 +535,13 @@ class Compiler {
 
   textHtml(t: TextNode): string {
     if (!t.text.trim()) return '&nbsp;';
-    return t.text
-      .split('\n')
-      .map((line) => escapeHtml(line).replace(/ {2}/g, ' &nbsp;'))
-      .join('<br>');
+    const piece = (s: string) =>
+      s
+        .split('\n')
+        .map((line) => escapeHtml(line).replace(/ {2}/g, ' &nbsp;'))
+        .join('<br>');
+    // Styled ranges (a bold word) become inline spans; inbox clients all honour these.
+    return hasSpans(t) ? richHtml(t, piece) : piece(t.text);
   }
 
   textCell(t: TextNode, b: Box, env: Env, place: Place): string {
