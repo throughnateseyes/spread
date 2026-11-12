@@ -396,6 +396,10 @@ ipcMain.handle('hosting-connect', answer(hosting.connect));
 ipcMain.handle('hosting-disconnect', answer(hosting.disconnect));
 ipcMain.handle('hosting-upload', answer(hosting.upload));
 
+// ---------- reading web pages (listing links → cards) ----------
+
+ipcMain.handle('fetch-page', answer((url) => require('./fetchpage.cjs').fetchPage(url)));
+
 // ---------- Claude side panel ----------
 
 chat.init((update) => {

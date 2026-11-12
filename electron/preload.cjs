@@ -48,6 +48,7 @@ contextBridge.exposeInMainWorld('spreadNative', {
   hostingConnect: (opts) => ipcRenderer.invoke('hosting-connect', opts),
   hostingDisconnect: () => ipcRenderer.invoke('hosting-disconnect'),
   hostingUpload: (opts) => ipcRenderer.invoke('hosting-upload', opts),
+  fetchPage: (url) => ipcRenderer.invoke('fetch-page', url),
   claudeStatus: () => ipcRenderer.invoke('claude-status'),
   claudeConnect: (target) => ipcRenderer.invoke(target === 'desktop' ? 'claude-connect-desktop' : 'claude-connect-code'),
   claudeDisconnectCode: () => ipcRenderer.invoke('claude-disconnect-code'),

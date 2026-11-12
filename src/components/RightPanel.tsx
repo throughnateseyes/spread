@@ -1,4 +1,5 @@
 import { RepeatSection } from './RepeatDialog';
+import { openListingCards } from './ListingCardsDialog';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { MOD, useLayout, useStore } from '../store';
 import { absoluteBox, inAutoLayout, type LayoutMap } from '../layout';
@@ -243,6 +244,9 @@ function DocumentPanel() {
           </div>
           <Button className="block" onClick={() => void window.dispatchEvent(new Event('spread:sections'))}>
             <IconPlus size={ICON_DENSE} /> Add section
+          </Button>
+          <Button className="block" title="Fill the listing cards from the listing pages: price, address, details, link and photo" onClick={() => openListingCards()}>
+            Fill cards from listing links…
           </Button>
         </Section>
       ) : (

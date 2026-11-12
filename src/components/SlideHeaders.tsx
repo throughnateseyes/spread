@@ -9,6 +9,7 @@ import { emailRootOf } from '../email/boards';
 import type { Doc } from '../types';
 import { isElectron } from '../platform';
 import { askSaveToLibrary } from './LibraryDialogs';
+import { openListingCards } from './ListingCardsDialog';
 
 // HTML chrome around every board on the canvas: a quiet header row (row letter, name, note,
 // pick / reject, one actions menu) and, for carousels, slide numbers under the slides plus an
@@ -181,6 +182,7 @@ function BoardChrome({
           null,
         ]
       : []),
+    ...(isEmail ? [{ label: 'Fill cards from listing links…', fn: () => openListingCards(board.id) }] : []),
     { label: 'Export this row…', fn: () => (activate(), s().set({ modal: 'export' })) },
     ...(isElectron
       ? [

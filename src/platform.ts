@@ -142,6 +142,8 @@ export interface SpreadNative {
   hostingConnect(opts: { site: string; user: string; password: string }): Promise<HostingAnswer<HostingStatus>>;
   hostingDisconnect(): Promise<HostingAnswer<HostingStatus>>;
   hostingUpload(opts: { files: { name: string; type: string; hash: string; data: Uint8Array }[] }): Promise<HostingAnswer<{ urls: Record<string, string>; uploaded: number; reused: number }>>;
+  /** Reads a public web page in the main process (electron/fetchpage.cjs): 10s, 2 MB, redirects followed. */
+  fetchPage(url: string): Promise<HostingAnswer<FetchedPage>>;
   claudeStatus(): Promise<ClaudeStatus>;
   /** Desktop opens the .mcpb for Claude Desktop to install; code registers the server with Claude Code for every folder. */
   claudeConnect(target: 'desktop' | 'code'): Promise<{ ok: boolean; error?: string }>;
@@ -188,6 +190,31 @@ export async function fetchImage(url: string): Promise<{ data: Uint8Array; type:
   const res = await fetch(url);
   if (!res.ok) throw new Error(`The server answered ${res.status}.`);
   return { data: new Uint8Array(await res.arrayBuffer()), type: res.headers.get('content-type') || 'image/jpeg' };
+}
+
+export interface FetchedPage {
+  /** Where the page ended up after redirects. */
+  url: string;
+  status: number;
+  type: string;
+  html: string;
+}
+
+/** Reads a web page. In the browser this only works for sites that allow it (CORS), which listing sites don't. */
+export async function fetchPage(url: string): Promise<FetchedPage> {
+  if (native) {
+    const r = await native.fetchPage(url);
+    if (!r.ok) throw new Error(r.error);
+    return { url: r.url, status: r.status, type: r.type, html: r.html };
+  }
+  let res: Response;
+  try {
+    res = await fetch(url);
+  } catch {
+    throw new Error('Reading listing pages needs the Spread desktop app.');
+  }
+  if (!res.ok) throw new Error(`The site answered ${res.status}.`);
+  return { url: res.url || url, status: res.status, type: res.headers.get('content-type') || '', html: await res.text() };
 }
 
 export function readFile(path: string): Promise<NativeFile> {

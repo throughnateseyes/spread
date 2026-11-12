@@ -400,6 +400,23 @@ tool(
 );
 
 tool(
+  'spread_fill_listing_cards',
+  {
+    title: 'Fill listing cards from listing links',
+    description:
+      "Fills the listing cards on an email board (active, or boardId) from listing page links alone, e.g. rentbt.com/listing/… pages. Spread reads each page (address, unit, price, beds, baths, neighborhood, photos), sorts them (sort 'price' = cheapest first, the default; 'as-given' keeps your order) and fills the cards in order: price, 'Address Unit N' (Street/Avenue dropped, like the user's cards), 'Neighborhood | N BD | N BA' (keeping the card's own separator), a link to the listing on the card and its photo, and the first listing photo cropped by the photo host to the frame's exact size at 2x. That cropped URL becomes the picture's own web address (email.imageUrls), so nothing is uploaded, and the same file goes in the photo tray so the canvas matches. Cards are a repeat whose fields are named like price, address, details/meta, photo, link, or layers keyed unit-1-price, unit-1-address, unit-1-meta, unit-1-photo (unit-2-…). More links than cards adds cards; fewer leaves the extra cards as they were and lists them. A fact the page doesn't have becomes a {{TOKEN}} (or an empty photo) so export catches it. One undo step. preview: true reads the links and returns what it found without changing the board. Returns { cards: [{ card, url, price, address, details, photo, problems }], added, extras, failed, summary }. Tell the user about every problem and failed link.",
+    inputSchema: {
+      boardId,
+      urls: z.array(z.string()).min(1).describe('Listing page links, one per card.'),
+      sort: z.enum(['price', 'as-given']).optional().describe("'price' (default): cheapest first. 'as-given': the order of urls."),
+      preview: z.boolean().optional().describe('Only read the links and report what each page says.'),
+    },
+    annotations: { openWorldHint: true }, // reads listing pages and photos from the web
+  },
+  passthrough('fill_listing_cards', 180_000),
+);
+
+tool(
   'spread_wrap_nodes',
   {
     title: 'Wrap layers in a frame',
