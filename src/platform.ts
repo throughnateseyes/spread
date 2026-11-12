@@ -96,6 +96,8 @@ export interface LiveCheckAnswer {
 }
 
 export interface ProjectRecord {
+  /** Short and stable (it survives a rename), so Claude can name a project exactly. */
+  id?: string;
   path: string;
   folderId: string | null;
   /** When it was last opened here; 0 for files found in the default folder. */

@@ -56,8 +56,10 @@ Every tool carries MCP safety hints: looking tools are marked read-only, and onl
 | `spread_get_brand` | A brand kit in full: colors and roles, fonts and roles, type scale, spacing, voice, rules |
 | `spread_save_brand` | Create or update a kit (import from a design system, DESIGN.md or CSS; `addRules` for learned rules; `fontFiles` to copy fonts in) |
 | `spread_use_brand` | Switch the project to a brand, or to none |
-| `spread_list_projects` | Every project on Home: name, path, kinds, boards, folder and last change |
-| `spread_save_project` / `spread_open_project` / `spread_new_project` | `.spread` project files; open and new use their own tab |
+| `spread_list_projects` | Every project on Home: id, name, path, which one is active, which are open in tabs, kinds, boards, folder and last change |
+| `spread_open_project` | Switch to a project by id, name or path, wait for it to load, and return it; later calls act on it |
+| `spread_move_board` | Move a row to another project (or `copy: true`), open, closed or new, with its photos, fonts and styles |
+| `spread_save_project` / `spread_new_project` | Save the `.spread` file; start a blank project in its own tab |
 | `spread_undo` / `spread_redo` | History |
 | `spread_list_fonts` | Font families you can use |
 

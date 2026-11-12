@@ -24,7 +24,7 @@ import { fieldNamed, photoFields, repeatHost, setRows, startRepeat, stopRepeat }
 import { STYLE_PROPS, addSpace, addTextStyle, applyStyle, freeName, linkMatches, linkSpace, spaceNamed, styleDiffs, styleUses, styleValues, textStyleNamed, unstyledGroups } from './tokens';
 import { activeBrand, brandById, normalizeBrand, saveBrand, setProjectBrand, slugify, useBrands } from './brand';
 import { clearAutosave, loadProjectBytes, safeFileName, serializeProject } from './project';
-import { focusForClaude, newProjectOfKind, openInTab, projectsForClaude } from './workspace';
+import { currentProjectForClaude, focusForClaude, newProjectForClaude, openProjectForClaude, projectsForClaude, resolveProject, sendBoard } from './workspace';
 import { BUNDLED_FONTS, SYSTEM_FONTS, uploadedFonts } from './fonts';
 import { homeDir, isElectron, listFiles, onAutomationRequest, picturesDir, readFile, respondAutomation, writeFiles, writeToPath } from './platform';
 import { PAGE_PRESETS, type AssetMeta, type Doc, type FrameNode, type ImageNode, type Paint, type SceneNode, type SpaceSlot, type TextNode } from './types';
@@ -237,6 +237,7 @@ function summary(detail: 'full' | 'outline' = 'full') {
     if (n.type === 'image' && n.assetId) used.set(n.assetId, (used.get(n.assetId) ?? 0) + 1);
   });
   return {
+    project: currentProjectForClaude(),
     boardId: d.id,
     kind: d.kind,
     note: d.note ?? null,
@@ -451,7 +452,14 @@ function mergeImageUrls(b: Doc, changes: Record<string, string | null>) {
   return Object.keys(next).length ? next : undefined;
 }
 
-const handlers: Record<string, (p: Params) => Promise<unknown> | unknown> = {
+/** The project Claude is now in, after opening or starting one. */
+function openedProject() {
+  const p = useStore.getState().project;
+  return { project: currentProjectForClaude(), activeBoardId: p.activeBoardId, boards: boardsSummary(), brand: brandBrief() };
+}
+
+/** caller: the project an in-app Claude's chat belongs to (null for other clients), for project switches. */
+const handlers: Record<string, (p: Params, caller?: string | null) => Promise<unknown> | unknown> = {
   get_state: (p) => summary(p.detail === 'outline' ? 'outline' : 'full'),
 
   async list_links() {
@@ -473,7 +481,7 @@ const handlers: Record<string, (p: Params) => Promise<unknown> | unknown> = {
   },
 
   // ---------- boards (rows of variations) ----------
-  list_boards: () => ({ activeBoardId: useStore.getState().project.activeBoardId, boards: boardsSummary() }),
+  list_boards: () => ({ project: currentProjectForClaude(), activeBoardId: useStore.getState().project.activeBoardId, boards: boardsSummary() }),
 
   activate_board(p) {
     useStore.getState().setActiveBoard(requireBoard(p.boardId));
@@ -639,6 +647,7 @@ const handlers: Record<string, (p: Params) => Promise<unknown> | unknown> = {
     const s = useStore.getState();
     const p = s.project;
     return {
+      project: currentProjectForClaude(),
       activeBoardId: p.activeBoardId,
       brand: brandBrief(),
       selection: s.selection.map((id) => findNode(s.doc.nodes, id)).filter(Boolean).map((n) => nodeBrief(n as SceneNode)),
@@ -1048,25 +1057,28 @@ const handlers: Record<string, (p: Params) => Promise<unknown> | unknown> = {
     return { path };
   },
 
-  async open_project(p) {
-    if (!p.path) throw new Error('Pass path');
+  async open_project(p, caller) {
+    const ref = p.project ?? p.path;
+    if (!ref) throw new Error('Pass project: an id, name or path from spread_list_projects');
     if (isElectron) {
-      await openInTab(p.path);
-      return {};
+      await openProjectForClaude(String(ref), caller ?? null);
+      return openedProject();
     }
-    const f = await readFile(p.path);
-    await loadProjectBytes(f.data, p.path);
+    const f = await readFile(String(ref));
+    await loadProjectBytes(f.data, String(ref));
     return {};
   },
 
-  list_projects() {
-    return { projects: projectsForClaude() };
+  list_projects(_p, caller) {
+    const projects = projectsForClaude(caller ?? null);
+    const active = projects.find((x) => x.active);
+    return { activeProject: active ? { id: active.id, name: active.name, path: active.path } : currentProjectForClaude(), projects };
   },
 
-  async new_project(p) {
+  async new_project(p, caller) {
     if (isElectron) {
-      await newProjectOfKind('carousel', { name: p.name ? String(p.name) : undefined, dialog: false });
-      return {};
+      await newProjectForClaude(p.name ? String(p.name) : undefined, caller ?? null);
+      return openedProject();
     }
     const s = useStore.getState();
     if (s.dirty && s.doc.nodes.length && !p.discard) throw new Error('The open project has unsaved changes. Call save_project first, or pass discard: true.');
@@ -1121,14 +1133,31 @@ const handlers: Record<string, (p: Params) => Promise<unknown> | unknown> = {
     return { brand: brandBrief() };
   },
 
+  /** Moves or copies a row to another project (open in a tab, closed on disk, or new). */
+  async move_board(p, caller) {
+    if (!isElectron) throw new Error('Moving rows between projects needs the desktop app.');
+    const s = useStore.getState();
+    const boardId = p.boardId ? requireBoard(p.boardId) : s.project.activeBoardId;
+    const fresh = typeof p.newProject === 'string' ? p.newProject : null;
+    if (!fresh && !p.toProject) throw new Error('Pass toProject (an id, name or path from spread_list_projects), or newProject: "Name" to start a project with this row.');
+    const r = await sendBoard({ boardId, to: fresh !== null ? null : resolveProject(String(p.toProject)), newName: fresh ?? undefined, move: !p.copy, activate: !!p.activate, caller: caller ?? null });
+    return {
+      ...r,
+      activeProject: currentProjectForClaude(),
+      hint: r.activated
+        ? `You're now working in ${r.to.name}; the row is its active board (${r.board.id}).`
+        : `You're still working in ${r.from.name}. To work on the row there, call spread_open_project { project: '${r.to.id ?? r.to.path}' } (or pass activate: true next time).`,
+    };
+  },
+
   /** Several methods in one call (one permission prompt, one round trip). Stops at the first error. */
-  async batch(p) {
+  async batch(p, caller) {
     if (!Array.isArray(p.steps) || !p.steps.length) throw new Error('Pass steps: [{ method, params }]');
     const results: unknown[] = [];
     for (const [i, step] of (p.steps as Params[]).entries()) {
       if (!step?.method || step.method === 'batch') throw new Error(`Step ${i + 1}: pass a method (not batch)`);
       try {
-        results.push({ method: step.method, result: await runAutomation(step.method, step.params ?? {}) });
+        results.push({ method: step.method, result: await runAutomation(step.method, step.params ?? {}, caller) });
       } catch (e) {
         return { completed: i, results, error: { step: i + 1, method: step.method, message: (e as Error).message } };
       }
@@ -1159,7 +1188,7 @@ Object.assign(handlers, emailHandlers);
  * returns its result (throws on error). Also handy for dev testing from the page:
  *   (await import('/src/automation.ts')).runAutomation('get_feedback', {})
  */
-export async function runAutomation(method: string, params: Params = {}): Promise<unknown> {
+export async function runAutomation(method: string, params: Params = {}, caller: string | null = null): Promise<unknown> {
   const fn = handlers[method];
   if (!fn) throw new Error(`Unknown method "${method}". Known: ${Object.keys(handlers).join(', ')}`);
   // Read-only calls must not disturb the user: restore their active board and selection afterwards.
@@ -1172,7 +1201,7 @@ export async function runAutomation(method: string, params: Params = {}): Promis
     useStore.getState().setActiveBoard(requireBoard(params.boardId));
   }
   try {
-    return (await asClaude(() => fn(params), `spread_${method}`)) ?? {};
+    return (await asClaude(() => fn(params, caller), `spread_${method}`)) ?? {};
   } finally {
     if (restore) {
       const st = useStore.getState();
@@ -1182,11 +1211,14 @@ export async function runAutomation(method: string, params: Params = {}): Promis
   }
 }
 
+const SWITCHES_PROJECT = new Set(['open_project', 'new_project', 'list_projects']);
+
 export function installAutomation() {
   return onAutomationRequest(async (req) => {
     try {
-      await focusForClaude(req.project ?? null, READ_ONLY.has(req.method) || req.method === 'open_project' || req.method === 'new_project' || req.method === 'list_projects');
-      respondAutomation({ id: req.id, result: await runAutomation(req.method, req.params ?? {}) });
+      // Opening, starting or listing projects needs no detour through Claude's current project first.
+      if (!SWITCHES_PROJECT.has(req.method)) await focusForClaude(req.project ?? null, READ_ONLY.has(req.method));
+      respondAutomation({ id: req.id, result: await runAutomation(req.method, req.params ?? {}, req.project ?? null) });
     } catch (e) {
       respondAutomation({ id: req.id, error: (e as Error).message ?? String(e) });
     }
