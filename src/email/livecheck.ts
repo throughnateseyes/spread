@@ -3,8 +3,9 @@ import type { LayoutMap } from '../layout';
 import { native, type HostingAnswer, type LiveCheckAnswer } from '../platform';
 import { findNode } from '../tree';
 import type { Doc, FrameNode } from '../types';
-import { buildEmailHtml } from './html';
-import { boardHosting, pictureSrc } from './hosting';
+import { buildEmailHtml, collectEmailImages } from './html';
+import { pictureSources, pictureSrc, picturesToRender, refreshWordPress, renderedNames } from './hosting';
+import { renderEmailImages } from './images';
 import { compareCard, emailLinks, layerLabel, pageFacts, ratioName, shapeGap, shapeKept } from './livematch';
 
 // The send checklist's live check, run on demand (a button in the checklist, or spread_send_check
@@ -68,22 +69,26 @@ async function pool<T>(tasks: (() => Promise<T>)[], limit: number): Promise<T[]>
   return out;
 }
 
-/** Every picture with the address it gets in the HTML, worked out the way export does. */
-function pictureAddresses(doc: Doc, root: FrameNode, layout: LayoutMap) {
-  const hosting = boardHosting(doc);
-  // A web address saved per picture (once boards carry one) wins, as it does at export.
-  const saved = (doc.email as { imageUrls?: Record<string, string> } | undefined)?.imageUrls ?? {};
+/**
+ * Every picture with the address it gets in the HTML, from the same resolver export uses. A folder
+ * address needs the exported (hashed) file names, so those pictures are rendered first, as export does.
+ */
+async function pictureAddresses(doc: Doc, root: FrameNode, layout: LayoutMap) {
+  const sources = pictureSources(doc, {}, await refreshWordPress());
+  const base = sources.hosting.mode === 'base' && sources.hosting.baseUrl?.trim();
+  const toRender = picturesToRender(sources, collectEmailImages(root, layout));
+  if (base && toRender.length) sources.files = renderedNames(await renderEmailImages(root, layout, toRender, 2));
   const src = new Map<string, string>();
   const { images } = buildEmailHtml(root, layout, {
     title: '',
     tracking: doc.email?.tracking,
     imageUrl: (nodeId, fileName) => {
-      const url = saved[nodeId]?.trim() || pictureSrc(hosting, nodeId, fileName, saved);
+      const url = pictureSrc(sources, nodeId, fileName);
       src.set(nodeId, url);
       return url;
     },
   });
-  return images.map((im) => ({ im, src: src.get(im.nodeId) ?? im.fileName }));
+  return { wordpress: sources.hosting.mode === 'wordpress', pictures: images.map((im) => ({ im, src: src.get(im.nodeId) ?? im.fileName })) };
 }
 
 type Answer = HostingAnswer<LiveCheckAnswer>;
@@ -154,7 +159,7 @@ export async function liveCheck(doc: Doc, root: FrameNode, layout: LayoutMap, on
   };
 
   // What to load: each picture address and each web link, once however often they appear.
-  const pictures = pictureAddresses(doc, root, layout);
+  const { pictures, wordpress } = await pictureAddresses(doc, root, layout);
   const { links, cards } = emailLinks(root);
   const imageUrls = [...new Set(pictures.map((p) => p.src).filter((u) => /^https?:\/\//i.test(u)))];
   const pageUrls = [...new Set(links.map((l) => l.url))];
@@ -172,7 +177,6 @@ export async function liveCheck(doc: Doc, root: FrameNode, layout: LayoutMap, on
   );
 
   // ---- pictures, and the shape of each photo ----
-  const wordpress = boardHosting(doc).mode === 'wordpress';
   for (const { im, src } of pictures) {
     const n = findNode(nodes, im.nodeId);
     const name = nameOf(im.nodeId, 'Picture');

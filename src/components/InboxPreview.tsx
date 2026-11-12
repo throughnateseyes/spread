@@ -14,6 +14,8 @@ import './email.css';
 // The inbox preview, shared by the Preview button and the last step of Export: the line the
 // inbox list shows, the compiled email at a real width, and what changes across setups.
 
+const NO_IDS: string[] = [];
+
 export function useInboxPreview(src: InboxSource) {
   const [view, setView] = useState<InboxView>({ device: 'desktop', fonts: 'fallback', images: true });
   const [fontCss, setFontCss] = useState<string | null>(null);
@@ -35,8 +37,17 @@ export function useInboxPreview(src: InboxSource) {
     };
   }, [swaps]);
 
+  // On the phone, outline the text the two-across check found wrapping, so it's easy to spot.
+  const wrapIds = checks?.find((c) => c.id === 'wrap' && c.level !== 'ok')?.ids ?? NO_IDS;
+  const wrapKey = wrapIds.join('|');
+
   // Subject and preview text show in the inbox line, so typing them doesn't reload the email.
-  const html = useMemo(() => inboxHtml(src, view, fontCss ?? ''), [src.root, src.layout, src.tracking, src.pictures, view, fontCss]);
+  const html = useMemo(() => {
+    const out = inboxHtml(src, view, fontCss ?? '');
+    if (view.device !== 'mobile' || !wrapIds.length) return out;
+    const marks = wrapIds.map((id) => `[data-sid="${CSS.escape(id)}"]`).join(',');
+    return out.replace('</style>', () => `${marks}{outline:2px dashed #E8833A;outline-offset:2px}\n</style>`);
+  }, [src.root, src.layout, src.tracking, src.pictures, view, fontCss, wrapKey]);
 
   useEffect(() => {
     if (fontCss === null) return;

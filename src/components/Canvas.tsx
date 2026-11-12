@@ -29,6 +29,7 @@ import {
   type CropInfo,
 } from './CropOverlay';
 import { filesFromDataTransfer } from '../assets';
+import { emailTextDefaults } from '../email/templates';
 import { importFiles, placeAssets } from '../importer';
 import { Floating } from '../ui/Floating';
 import { CANVAS_CHROME, useTheme } from '../theme';
@@ -1090,7 +1091,7 @@ export default function Canvas() {
     const h = Math.round(b.h);
     let node: SceneNode;
     if (d.tool === 'text') {
-      node = makeText(x, y, 'Text');
+      node = makeText(x, y, 'Text', s.doc.kind === 'email' ? emailTextDefaults() : {});
       if (!clicked) {
         node.sizingH = 'fixed';
         node.w = w;
