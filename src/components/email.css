@@ -90,3 +90,14 @@
 .em-wp-on { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: var(--radius); background: var(--panel-2); }
 .em-wp-on span { flex: 1; min-width: 0; }
 .em-wp-on .link { background: none; border: none; color: var(--accent); padding: 0; cursor: pointer; }
+
+/* each picture's own web address, and the RentCafe paste steps */
+.em-pics > summary { cursor: pointer; list-style: none; }
+.em-pics > summary::-webkit-details-marker { display: none; }
+.em-pics > summary::after { content: '›'; display: inline-block; margin-left: 4px; color: var(--muted); transition: transform 0.15s; }
+.em-pics[open] > summary::after { transform: rotate(90deg); }
+.em-pics .em-images { margin-top: 8px; }
+.em-pics .hint { margin: 8px 0 0; }
+.em-steps { padding: 10px 12px; border-radius: var(--radius-lg); background: var(--panel-2); font-size: 12px; line-height: 1.45; }
+.em-steps b { font-weight: 600; }
+.em-steps ol { margin: 6px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 2px; }

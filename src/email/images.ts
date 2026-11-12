@@ -11,11 +11,17 @@ import type { EmailImage } from './html';
 // with its crop, adjustments and corner radius, and each flattened frame/shape, at `scale`
 // (2x by default so they stay sharp on retina screens). JPEG has no alpha, so rounded corners
 // and letterboxing are filled with the colour behind the layer (`matte`) rather than left
-// transparent; that keeps photos small and still looks right in Outlook.
+// transparent; that keeps photos small and still looks right in Outlook. Each file is named with a
+// short hash of its bytes, so a changed picture never reuses the name a sending tool already cached.
 
 export interface RenderedEmailImage {
   nodeId: string;
+  /** The exported name: the compiler's name plus a short hash of the file ("07-unit-6-photo-3f9a1c2b4d5e.jpg"). */
   fileName: string;
+  /** The compiler's name (EmailImage.fileName), without the hash. */
+  baseName: string;
+  /** Hash of the file's bytes: the same picture always gets the same one. */
+  hash: string;
   blob: Blob;
   /** Pixel size of the file. */
   width: number;
@@ -300,6 +306,15 @@ function encode(c: HTMLCanvasElement, format: 'jpeg' | 'png', quality: number): 
   return new Promise((res, rej) => c.toBlob((b) => (b ? res(b) : rej(new Error('Encoding failed'))), `image/${format}`, quality));
 }
 
+/** Short content hash (12 hex characters). WordPress uploads are matched on it, so keep it stable. */
+export async function hashOf(data: Uint8Array) {
+  const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', data as BufferSource));
+  return [...digest.slice(0, 6)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+/** "07-unit-6-photo.jpg" + hash → "07-unit-6-photo-3f9a1c2b4d5e.jpg". */
+export const withHash = (fileName: string, hash: string) => fileName.replace(/(\.[a-z0-9]+)?$/i, (ext) => `-${hash}${ext}`);
+
 /**
  * Renders every picture in `images` (from buildEmailHtml) to a file blob.
  * `nodes` is the email root frame or the list containing it; `layout` covers it.
@@ -344,7 +359,8 @@ export async function renderEmailImages(
         }
         if (im.format === 'jpeg') c = flattenOnto(c, im.matte);
         const blob = await encode(c, im.format, quality);
-        out.push({ nodeId: im.nodeId, fileName: im.fileName, blob, width: c.width, height: c.height });
+        const hash = await hashOf(new Uint8Array(await blob.arrayBuffer()));
+        out.push({ nodeId: im.nodeId, fileName: withHash(im.fileName, hash), baseName: im.fileName, hash, blob, width: c.width, height: c.height });
       } catch (e) {
         opts.warnings?.push(`Couldn't render ${im.fileName}: ${(e as Error).message}. It was skipped.`);
       }

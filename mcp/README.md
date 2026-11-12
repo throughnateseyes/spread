@@ -96,7 +96,7 @@ Rows are lettered A, B, C… by position. The user picks a row with Ctrl+Enter a
 | `spread_compare_overlay` | Measure a board against its reference: pixels changed, where, which layers, and what moved up or down |
 | `spread_send_check` | Subject, unsubscribe, address, links and alt text: is this email ready to send? |
 | `spread_preview_email` | See the real HTML as inboxes show it: desktop, phone, fallback fonts, images off, with checks and pictures |
-| `spread_export_email` | Write `email.html` plus images to a folder; re-export with `baseUrl` once the images are hosted |
+| `spread_export_email` | Write images (named with a content hash) plus `email.html` to a folder; re-export with `baseUrl` once the images are hosted (saved on the board). `platform: 'rentcafe'` returns the HTML with paste steps |
 
 Coordinates are strip-space pixels, per board. Slide `i` spans `x ∈ [i*slideWidth, (i+1)*slideWidth)`. Anything that crosses `x = k*slideWidth` is split across slides, which is how the seamless effect works.
 

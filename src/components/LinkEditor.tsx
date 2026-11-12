@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { getAsset } from '../assets';
 import { emailRootOf } from '../email/boards';
-import { boardHosting, checkWordPress, pictureUrlProblem, setBoardHosting, useWordPress, type WordPress } from '../email/hosting';
-import { joinUrl } from '../email/html';
+import { boardHosting, checkWordPress, pictureUrlProblem, setBoardHosting, setImageUrls, useWordPress, type WordPress } from '../email/hosting';
 import { hostingIssue, linkItems, type LinkItem, type PictureEntry } from '../email/linkmap';
 import { getLayout } from '../layout';
 import { LINK_ISSUE_TEXT, linkIssue, nodeLink, normaliseLink, setNodeLink } from '../links';
@@ -36,7 +35,8 @@ export function useLinkItems(board: Doc | undefined): LinkItem[] {
 export function useHostingIssue(board: Doc | undefined, items: LinkItem[]): string | null {
   const wp = useWordPress((s) => s.wp);
   if (!board) return null;
-  return hostingIssue(boardHosting(board), wp, items.reduce((n, i) => n + i.pictures.length, 0));
+  // Pictures with their own web address don't need the board's hosting.
+  return hostingIssue(boardHosting(board), wp, items.reduce((n, i) => n + i.pictures.filter((p) => !p.url?.trim()).length, 0));
 }
 
 /** ok, bad (this picture needs a URL) or hint (waiting on the board's hosting). */
@@ -162,7 +162,7 @@ export function ItemEditor({ board, item, onNext, onClose }: { board: Doc; item:
   return (
     <div className="lk-editor" onKeyDown={(e) => e.stopPropagation()}>
       {item.pictures.map((p) => (
-        <PictureLine key={p.nodeId} board={board} pic={p} mode={hosting.mode} baseUrl={hosting.baseUrl ?? ''} onKey={keys} />
+        <PictureLine key={p.nodeId} board={board} pic={p} mode={hosting.mode} onKey={keys} />
       ))}
       {hasLink ? (
         <>
@@ -218,41 +218,47 @@ function PictureLine({
   board,
   pic,
   mode,
-  baseUrl,
   onKey,
 }: {
   board: Doc;
   pic: PictureEntry;
   mode: PictureHostMode;
-  baseUrl: string;
   onKey: (e: React.KeyboardEvent<HTMLInputElement>, commit: () => string | null) => void;
 }) {
   const [url, setUrl] = useState(pic.url ?? '');
+  const field = useRef<HTMLInputElement>(null);
+  // Follow the address set elsewhere (right panel, Export window, Claude), but not while typing here.
+  useEffect(() => {
+    if (document.activeElement !== field.current) setUrl(pic.url ?? '');
+  }, [pic.url]);
   const thumb = pic.assetId ? getAsset(pic.assetId)?.thumbUrl : null;
-  const save = (v: string) => setBoardHosting(board.id, { urls: { ...(boardHosting(board).urls ?? {}), [pic.nodeId]: v.trim() } });
+  // Saved as the picture's own web address, which every hosting mode respects.
+  const save = (v: string) => setImageUrls(board.id, { [pic.nodeId]: v });
+  const own = mode === 'each' || !!pic.url;
   return (
     <div className="lk-pic">
       <div className="lk-pic-head">
         {thumb ? <img className="lk-thumb" src={thumb} alt="" /> : <span className="lk-thumb"><IconImage size={12} /></span>}
         <div className="lk-pic-text">
           <span className="ellipsis">{pic.fileName}</span>
-          <span className={`ellipsis ${pic.status === 'fix' ? 'bad' : pic.status === 'wait' ? 'warn' : 'muted'}`} title={mode === 'base' ? joinUrl(baseUrl || 'https://…/', pic.fileName) : pic.text}>
+          <span className={`ellipsis ${pic.status === 'fix' ? 'bad' : pic.status === 'wait' ? 'warn' : 'muted'}`} title={pic.text}>
             {pic.text}
           </span>
         </div>
       </div>
-      {mode === 'each' && (
+      {own && (
         <div className={`field ${pictureUrlProblem(url) ? 'em-invalid' : ''}`}>
           <IconImage size={12} />
           <input
+            ref={field}
             value={url}
-            placeholder="Picture URL, https://…"
+            placeholder={mode === 'each' ? 'Web address, https://…' : 'Web address (optional)'}
             spellCheck={false}
             onChange={(e) => {
               setUrl(e.target.value);
               save(e.target.value);
             }}
-            onKeyDown={(e) => onKey(e, () => (url.trim() ? pictureUrlProblem(url) : 'Paste the picture’s URL'))}
+            onKeyDown={(e) => onKey(e, () => (url.trim() ? pictureUrlProblem(url) : mode === 'each' ? 'Paste the picture’s web address' : null))}
           />
         </div>
       )}
