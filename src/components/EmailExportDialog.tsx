@@ -1,22 +1,27 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { IconArrowLeft as ArrowLeft, IconCheck as Check, IconCopy as Copy, IconDownload as Download, IconFolder as FolderOpen, IconImage as ImageIcon, IconLink as Link2, IconUpload as Upload, IconWarning as TriangleAlert } from '../ui/icons';
+import { IconArrowLeft as ArrowLeft, IconCheck as Check, IconCopy as Copy, IconDownload as Download, IconFolder as FolderOpen, IconLink as Link2, IconUpload as Upload, IconWarning as TriangleAlert } from '../ui/icons';
 import type { FrameNode, SceneNode } from '../types';
 import { computeLayout } from '../layout';
-import { getAsset } from '../assets';
-import { isElectron, native, revealInFolder, saveFilesToFolder, type HostingStatus } from '../platform';
-import { hostEmailImages } from '../email/hosting';
-import { Button, Modal, Segmented } from '../ui/controls';
-import { buildEmailHtml, GMAIL_CLIP_BYTES, joinUrl, parseNameTags, type EmailImage } from '../email/html';
+import { isElectron, revealInFolder, saveFilesToFolder } from '../platform';
+import { boardHosting, hostEmailImages, pictureSrc, useWordPress } from '../email/hosting';
+import { Button, Modal } from '../ui/controls';
+import { buildEmailHtml, GMAIL_CLIP_BYTES, parseNameTags } from '../email/html';
 import { renderEmailImages, type RenderedEmailImage } from '../email/images';
+import { sendChecks } from '../email/checklist';
+import { linkCounts } from '../email/linkmap';
 import './email.css';
 import { useStore } from '../store';
 import { ExportFolderRow, useExportFolder } from './ExportFolder';
 import { InboxChecks, InboxStage, useInboxPreview } from './InboxPreview';
+import { HostingField, openLinkItem, revealLinkItem, useHostingIssue, useLinkItems } from './LinkEditor';
+import { goToCheck } from './SendChecklist';
 import { blobToDataUrl } from '../pdf';
 
-// Email export: choose where the pictures will live (one base URL, or a URL per picture),
-// then render the pictures at 2x, preview the compiled HTML (desktop / phone), copy it, and
-// write pictures + email.html to a folder for upload.
+// Email export. Step one is short on purpose: how the send check stands, anything still to fix
+// (fixed on the canvas, not here), where the pictures live, and the HTML size. Subject, preview
+// text and every link and picture are edited on the board itself (the Inbox and Links panels).
+// Step two renders the pictures at 2x, previews the real HTML on desktop and phone, then uploads
+// and copies it, or writes pictures + email.html to a folder.
 
 interface Props {
   onClose: () => void;
@@ -26,123 +31,66 @@ interface Props {
   nodes: SceneNode[];
 }
 
-type HostMode = 'wordpress' | 'base' | 'each';
-type WordPress = HostingStatus['wordpress'];
-
-const K_BASE = 'spread.email.baseUrl';
-const K_MODE = 'spread.email.hosting';
-const K_URLS = 'spread.email.imageUrls';
-const K_META = 'spread.email.meta.';
-
-function lsGet(k: string): string | null {
-  try {
-    return localStorage.getItem(k);
-  } catch {
-    return null;
-  }
-}
-function lsSet(k: string, v: string) {
-  try {
-    localStorage.setItem(k, v);
-  } catch {
-    // storage unavailable (private window etc.); the dialog still works
-  }
-}
-function lsJson<T>(k: string, fallback: T): T {
-  try {
-    const raw = lsGet(k);
-    return raw ? { ...fallback, ...JSON.parse(raw) } : fallback;
-  } catch {
-    return fallback;
-  }
-}
-
-const BAD_HOST = /drive\.google\.com|docs\.google\.com|\bbox\.com|dropbox\.com|onedrive\.live\.com|1drv\.ms/i;
-
-function urlProblems(url: string): string | null {
-  const u = url.trim();
-  if (!u) return null;
-  if (BAD_HOST.test(u)) return 'Drive, Box, Dropbox and OneDrive share links don’t work as email images. Use the WordPress media library or the sender’s own hosting.';
-  if (/^http:\/\//i.test(u)) return 'Use https://. Many inboxes block or warn on plain http images.';
-  if (!/^https:\/\//i.test(u)) return 'Image URLs must be full public addresses starting with https://.';
-  return null;
+/** "3 links and 1 picture still need attention." */
+function fixSummary(items: ReturnType<typeof useLinkItems>) {
+  const open = items.filter((i) => i.fix);
+  const links = open.filter((i) => i.link?.issue).length;
+  const pics = open.length - links;
+  const part = (n: number, w: string) => (n ? `${n} ${w}${n === 1 ? '' : 's'}` : '');
+  return `${[part(links, 'link'), part(pics, 'picture')].filter(Boolean).join(' and ')} still need${open.length === 1 ? 's' : ''} attention.`;
 }
 
 function formatKb(bytes: number) {
   return `${(bytes / 1024).toFixed(1)} KB`;
 }
 
-export default function EmailExportDialog({ onClose, root, nodes }: Props) {
+export default function EmailExportDialog({ onClose, root }: Props) {
   const layout = useMemo(() => computeLayout([root]), [root]);
   const defaultTitle = parseNameTags(root.name).clean.replace(/^email\s*\/\s*/i, '') || 'Email';
-  const metaKey = K_META + root.id;
-  const savedMeta = useMemo(() => lsJson(metaKey, { title: '', preheader: '' }), [metaKey]);
-
   const [step, setStep] = useState<'setup' | 'review'>('setup');
-  // Subject and preview text live on the board (Inbox in the right panel); older exports kept them here.
   const board = useStore((s) => s.doc);
-  const title = board.email?.subject ?? savedMeta.title;
-  const preheader = board.email?.preheader ?? savedMeta.preheader;
+  const title = board.email?.subject ?? '';
+  const preheader = board.email?.preheader ?? '';
   const htmlTitle = title.trim() || defaultTitle;
-  const setMeta = (patch: { subject?: string; preheader?: string }) => useStore.getState().updateBoard(board.id, { email: { subject: title, preheader, ...patch } });
-  const setTitle = (subject: string) => setMeta({ subject });
-  const setPreheader = (v: string) => setMeta({ preheader: v });
-  const [mode, setMode] = useState<HostMode>(() => {
-    const m = lsGet(K_MODE);
-    return m === 'base' || m === 'each' ? m : isElectron ? 'wordpress' : 'base';
-  });
-  const [wp, setWp] = useState<WordPress | undefined>(undefined);
+  const hosting = boardHosting(board);
+  const mode = hosting.mode;
+  const wp = useWordPress((s) => s.wp);
+  /** WordPress URLs from this session's upload. */
   const [hosted, setHosted] = useState<Record<string, string>>({});
-  const [baseUrl, setBaseUrl] = useState(() => lsGet(K_BASE) ?? '');
-  const [urls, setUrls] = useState<Record<string, string>>(() => lsJson<Record<string, string>>(K_URLS, {}));
   const [rendered, setRendered] = useState<{ files: RenderedEmailImage[]; dataUrls: Record<string, string>; warnings: string[]; key: string } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [done, setDone] = useState<{ folder: string; count: number } | null>(null);
   const projectName = useStore((s) => s.project.name);
-  const tracking = useStore((s) => s.doc.email?.tracking);
+  const tracking = board.email?.tracking;
   const dest = useExportFolder(projectName);
+  const items = useLinkItems(board);
+  const toFix = linkCounts(items).fix;
+  const hostIssue = useHostingIssue(board, items);
 
-  useEffect(() => {
-    if (!native) return;
-    void native.hostingStatus().then((r) => setWp(r.ok ? r.wordpress : null));
-  }, []);
-  useEffect(() => lsSet(K_MODE, mode), [mode]);
-  useEffect(() => lsSet(K_BASE, baseUrl), [baseUrl]);
-  useEffect(() => lsSet(K_URLS, JSON.stringify(urls)), [urls]);
-
-  const urlFor = (map: Record<string, string>) => (nodeId: string, fileName: string) =>
-    mode === 'wordpress' ? (map[nodeId] ?? fileName) : mode === 'base' ? joinUrl(baseUrl, fileName) : urls[nodeId]?.trim() || fileName;
+  const urlFor = (map: Record<string, string>) => (nodeId: string, fileName: string) => pictureSrc(hosting, nodeId, fileName, map);
   const imageUrl = urlFor(hosted);
 
   const compiled = useMemo(
     () => buildEmailHtml(root, layout, { title: htmlTitle, preheader, imageUrl, tracking }),
-    // imageUrl closes over mode / baseUrl / urls / hosted
-    [root, layout, htmlTitle, preheader, tracking, mode, baseUrl, urls, hosted],
+    // imageUrl closes over the board's hosting and this session's uploads
+    [root, layout, htmlTitle, preheader, tracking, hosting, hosted], // eslint-disable-line react-hooks/exhaustive-deps
   );
   const images = compiled.images;
   const imagesKey = images.map((i) => `${i.nodeId}:${i.fileName}:${i.width}x${i.height}:${i.matte}`).join('|');
+  const checks = useMemo(() => sendChecks(board, root, layout), [board, root, layout]);
 
-  const hostingWarnings = useMemo(() => {
-    const w: string[] = [];
-    if (!images.length) return w;
-    if (mode === 'wordpress') {
-      if (wp === null) w.push('Connect WordPress so Spread can upload the pictures for you.');
-    } else if (mode === 'base') {
-      if (!baseUrl.trim()) w.push('Enter the base URL where you’ll upload the pictures, or the email will point at local file names.');
-      else {
-        const p = urlProblems(baseUrl);
-        if (p) w.push(p);
-      }
-    } else {
-      const missing = images.filter((im) => !urls[im.nodeId]?.trim());
-      if (missing.length) w.push(`${missing.length} picture${missing.length === 1 ? ' has' : 's have'} no URL yet: ${missing.map((m) => m.fileName).join(', ')}.`);
-      const bad = new Set(images.map((im) => urlProblems(urls[im.nodeId] ?? '')).filter((x): x is string => !!x));
-      w.push(...bad);
+  /** Closes the dialog and opens the first thing to fix on the canvas, in Links mode. */
+  const fixOnCanvas = () => {
+    const first = items.find((i) => i.fix);
+    onClose();
+    useStore.getState().set({ linksMode: true });
+    if (first) {
+      openLinkItem(board.id, first.id, 'canvas');
+      revealLinkItem(board.id, first.id);
     }
-    return w;
-  }, [images, mode, baseUrl, urls, wp]);
+  };
 
   // Pictures for the preview (data URLs, so the frame can show them before upload).
   const pictures = useMemo(() => rendered?.dataUrls ?? {}, [rendered]);
@@ -240,7 +188,7 @@ export default function EmailExportDialog({ onClose, root, nodes }: Props) {
     }
   };
 
-  const warnings = [...hostingWarnings, ...compiled.warnings, ...(rendered?.warnings ?? [])];
+  const warnings = [...compiled.warnings, ...(rendered?.warnings ?? [])];
   const sizePct = Math.min(100, (compiled.bytes / GMAIL_CLIP_BYTES) * 100);
   const sizeLevel = compiled.bytes > GMAIL_CLIP_BYTES ? 'over' : compiled.bytes > GMAIL_CLIP_BYTES * 0.8 ? 'near' : 'ok';
   const height = layout.get(root.id)?.h ?? 0;
@@ -260,117 +208,76 @@ export default function EmailExportDialog({ onClose, root, nodes }: Props) {
   );
 
   const warningList = warnings.length > 0 && (
-    <div className="em-warnings">
-      <div className="em-label">
-        <TriangleAlert size={12} /> {warnings.length} thing{warnings.length === 1 ? '' : 's'} to check
-      </div>
+    <details className="em-warnings">
+      <summary className="em-label">
+        <TriangleAlert size={12} /> {warnings.length} note{warnings.length === 1 ? '' : 's'} on how it will look
+      </summary>
       <ul>
         {warnings.map((w, i) => (
           <li key={i}>{w}</li>
         ))}
       </ul>
-    </div>
+    </details>
   );
 
-  const thumbFor = (im: EmailImage) => {
-    if (rendered?.dataUrls[im.nodeId]) return rendered.dataUrls[im.nodeId];
-    const n = findImageAsset(root, im.nodeId);
-    return n ? getAsset(n)?.thumbUrl ?? null : null;
-  };
-
   if (step === 'setup') {
+    const open = checks.filter((c) => c.level === 'fix');
     return (
-      <Modal title="Export email" onClose={onClose} width={640}>
-        <div className="em-grid2">
-          <label className="em-field">
-            <span className="em-label">Subject</span>
-            <div className="field">
-              <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="What makes them open it" />
-            </div>
-          </label>
-          <label className="em-field">
-            <span className="em-label">Preview text</span>
-            <div className="field">
-              <input value={preheader} onChange={(e) => setPreheader(e.target.value)} placeholder="The line after the subject in the inbox" />
-            </div>
-          </label>
+      <Modal title="Export email" onClose={onClose} width={560}>
+        <div className="em-checks">
+          {checks.map((c) => (
+            <button
+              key={c.id}
+              className={`send-chip ${c.level}`}
+              title={`${c.title}. ${c.detail}`}
+              onClick={() => {
+                onClose();
+                goToCheck(c);
+              }}
+            >
+              {c.level === 'ok' ? <Check size={12} /> : <TriangleAlert size={12} />}
+              {c.label}
+            </button>
+          ))}
         </div>
 
-        <div className="em-field">
-          <span className="em-label">Picture hosting</span>
-          <Segmented
-            value={mode}
-            options={[
-              ...(isElectron ? [{ value: 'wordpress' as const, label: 'Upload to WordPress' }] : []),
-              { value: 'base', label: 'One folder URL' },
-              { value: 'each', label: 'URL per picture' },
-            ]}
-            onChange={setMode}
-          />
-          {mode === 'wordpress' ? (
-            <WordPressConnect wp={wp} onChange={setWp} />
-          ) : mode === 'base' ? (
-            <>
-              <div className="field">
-                <span className="field-label">
-                  <Link2 size={12} />
-                </span>
-                <input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="https://example.com/wp-content/uploads/2026/10/" spellCheck={false} />
-              </div>
-              <div className="hint">
-                Upload the exported pictures to this folder with the same file names.
-                {images[0] && (
-                  <>
-                    {' '}
-                    First picture: <code className="em-code">{joinUrl(baseUrl || 'https://…/', images[0].fileName)}</code>
-                  </>
-                )}
-              </div>
-            </>
-          ) : (
-            <div className="hint">Upload each picture first (e.g. to the WordPress media library), then paste its URL below.</div>
-          )}
-        </div>
-
-        <div className="em-field">
-          <span className="em-label">
-            {images.length} picture{images.length === 1 ? '' : 's'} · exported at 2× ({images.reduce((a, i) => a + (i.format === 'png' ? 1 : 0), 0)} PNG)
-          </span>
-          {images.length === 0 && <div className="hint">This email has no pictures. Only email.html will be written.</div>}
-          <div className="em-images">
-            {images.map((im) => {
-              const thumb = thumbFor(im);
-              const own = urls[im.nodeId] ?? '';
-              const problem = mode === 'each' ? urlProblems(own) : null;
-              return (
-                <div key={im.nodeId} className="em-image">
-                  <div className="em-thumb">{thumb ? <img src={thumb} alt="" /> : <ImageIcon size={16} />}</div>
-                  <div className="em-image-main">
-                    <div className="em-image-name">
-                      <b>{im.fileName}</b>
-                      <span className="muted">
-                        {im.width * 2}×{im.height * 2}
-                        {im.rasterize ? ' · flattened' : ''}
-                      </span>
-                    </div>
-                    {mode === 'each' ? (
-                      <div className={`field ${problem ? 'em-invalid' : ''}`}>
-                        <input
-                          value={own}
-                          spellCheck={false}
-                          placeholder="https://…"
-                          onChange={(e) => setUrls((u) => ({ ...u, [im.nodeId]: e.target.value }))}
-                        />
-                      </div>
-                    ) : (
-                      <div className="hint em-alt">{im.alt ? `Alt: ${im.alt}` : 'No alt text (rename the layer to describe the photo)'}</div>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
+        {toFix > 0 ? (
+          <div className="em-fix">
+            <span>
+              <b>{fixSummary(items)}</b>{' '}
+              {items.find((i) => i.fix)?.name}: {items.find((i) => i.fix)?.status.toLowerCase()}.
+            </span>
+            <Button onClick={fixOnCanvas}>
+              <Link2 size={14} /> Fix on canvas
+            </Button>
           </div>
-        </div>
+        ) : (
+          open.length > 0 && (
+            <div className="em-fix">
+              <span>
+                <b>{open[0].title}.</b> {open[0].detail}
+              </span>
+              <Button
+                onClick={() => {
+                  onClose();
+                  goToCheck(open[0]);
+                }}
+              >
+                Show me
+              </Button>
+            </div>
+          )
+        )}
+
+        {images.length > 0 && (
+          <div className="em-field">
+            <span className="em-label">
+              Pictures ({images.length}, exported at 2×)
+            </span>
+            <HostingField board={board} />
+            {hostIssue && <div className="hint em-error">{hostIssue}</div>}
+          </div>
+        )}
 
         {sizeMeter}
         {warningList}
@@ -405,7 +312,7 @@ export default function EmailExportDialog({ onClose, root, nodes }: Props) {
                     ? `${images.length} picture${images.length === 1 ? '' : 's'} on ${wp?.site.replace(/^https:\/\//, '') ?? 'WordPress'}`
                     : `${images.length} picture${images.length === 1 ? '' : 's'} will upload to ${wp?.site.replace(/^https:\/\//, '') ?? 'WordPress'} (unchanged ones are reused)`
                   : mode === 'base'
-                  ? `Upload ${images.length} picture${images.length === 1 ? '' : 's'} to ${baseUrl.trim() || 'your base URL'}`
+                  ? `Upload ${images.length} picture${images.length === 1 ? '' : 's'} to ${hosting.baseUrl?.trim() || 'your folder URL'}`
                   : `${images.length} picture${images.length === 1 ? '' : 's'}, linked one by one`
                 : 'No pictures'}
             </div>
@@ -459,78 +366,5 @@ export default function EmailExportDialog({ onClose, root, nodes }: Props) {
         </div>
       </div>
     </Modal>
-  );
-}
-
-function findImageAsset(root: SceneNode, id: string): string | null {
-  if (root.id === id) return root.type === 'image' ? root.assetId : null;
-  if (root.type === 'frame') {
-    for (const c of root.children) {
-      const r = findImageAsset(c, id);
-      if (r) return r;
-    }
-  }
-  return null;
-}
-
-/** Connect or show the WordPress site pictures upload to (an Application Password, kept in the Keychain). */
-function WordPressConnect({ wp, onChange }: { wp: WordPress | undefined; onChange: (wp: WordPress) => void }) {
-  const [site, setSite] = useState('');
-  const [user, setUser] = useState('');
-  const [password, setPassword] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  if (wp === undefined) return <div className="hint">Checking the connection…</div>;
-  if (wp) {
-    return (
-      <div className="em-wp-on">
-        <Check size={14} />
-        <span>
-          Uploads go to <b>{wp.site.replace(/^https:\/\//, '')}</b> as {wp.name}
-        </span>
-        <button
-          className="link"
-          onClick={async () => {
-            const r = await native!.hostingDisconnect();
-            if (r.ok) onChange(null);
-          }}
-        >
-          Disconnect
-        </button>
-      </div>
-    );
-  }
-  const connect = async () => {
-    setBusy(true);
-    setError(null);
-    const r = await native!.hostingConnect({ site, user, password });
-    setBusy(false);
-    if (!r.ok) return setError(r.error);
-    setPassword('');
-    onChange(r.wordpress);
-  };
-  return (
-    <div className="em-wp">
-      <div className="em-grid3">
-        <div className="field">
-          <input value={site} onChange={(e) => setSite(e.target.value)} placeholder="Site, e.g. example.com" spellCheck={false} />
-        </div>
-        <div className="field">
-          <input value={user} onChange={(e) => setUser(e.target.value)} placeholder="WordPress username" spellCheck={false} autoComplete="off" />
-        </div>
-        <div className="field">
-          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Application password" autoComplete="off" onKeyDown={(e) => e.key === 'Enter' && void connect()} />
-        </div>
-      </div>
-      <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-        <span className="hint">
-          In WordPress: Users → Profile → Application Passwords → name it “Spread” → Add. It’s stored in your Mac’s Keychain, not your login password.
-        </span>
-        <Button primary onClick={connect} disabled={busy || !site.trim() || !user.trim() || !password.trim()}>
-          {busy ? 'Checking…' : 'Connect'}
-        </Button>
-      </div>
-      {error && <div className="hint em-error">{error}</div>}
-    </div>
   );
 }

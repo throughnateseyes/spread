@@ -1,5 +1,8 @@
 import { normaliseSpans, remapSpans, resolveSpanInput } from './richtext';
 import { emailHandlers } from './email/automation';
+import { emailRootOf } from './email/boards';
+import { boardHosting, hostingStatus } from './email/hosting';
+import { linkItems } from './email/linkmap';
 import { createFromTemplate, libraryForClaude, saveReference, saveTemplate } from './library';
 import { useStore, currentLayout, boardFrames, asClaude, fitVariations, type BoardEditLog } from './store';
 import { collectLinks, nodeLink, setNodeLink, withTracking } from './links';
@@ -433,10 +436,21 @@ function handEditsOf(b: Doc, log: BoardEditLog | undefined): string[] {
 const handlers: Record<string, (p: Params) => Promise<unknown> | unknown> = {
   get_state: (p) => summary(p.detail === 'outline' ? 'outline' : 'full'),
 
-  list_links() {
+  async list_links() {
     const d = useStore.getState().doc;
     const links = collectLinks(d.nodes).map((l) => ({ ...l, shipsAs: withTracking(l.url, d.email?.tracking) }));
-    return { tracking: d.email?.tracking ?? null, links, needAttention: links.filter((l) => l.issue).length };
+    const root = emailRootOf(d);
+    // The same list the Links panel shows: each link with its picture, and where pictures are hosted.
+    const hosting = boardHosting(d);
+    const items = root ? linkItems(d, root, currentLayout(), hosting, await hostingStatus()) : [];
+    return {
+      tracking: d.email?.tracking ?? null,
+      links,
+      needAttention: links.filter((l) => l.issue).length,
+      pictureHosting: root ? hosting : undefined,
+      items: items.map(({ id, section, name, link, suggested, fix, status, pictures }) => ({ id, section, name, link, suggested, fix, status, pictures: pictures.map(({ assetId: _a, ...p }) => p) })),
+      toFix: items.filter((i) => i.fix).length,
+    };
   },
 
   // ---------- boards (rows of variations) ----------

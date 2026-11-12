@@ -18,6 +18,7 @@ const TOOL_KEYS: Record<string, Tool> = { v: 'move', h: 'hand', f: 'frame', p: '
 export const SHORTCUTS: [string, string][] = [
   ['V / H', 'Move / Hand tool'],
   ['C', 'Comment: click a layer or a spot to send Claude a note'],
+  ['L', 'Links mode on email boards: every link and picture, and what still needs one'],
   ['F / P / R / O / T', 'Frame / Photo frame / Rectangle / Ellipse / Text (R and O share the Shape tool)'],
   ['Space + drag', 'Pan'],
   ['Scroll / Shift+Scroll', 'Pan vertically / horizontally'],
@@ -259,12 +260,13 @@ export function installShortcuts() {
     }
     if (e.key === 'Escape') {
       if (s.croppingId) s.set({ croppingId: null });
+      else if (s.linkEdit) s.set({ linkEdit: null });
       else if (s.tool !== 'move') s.setTool('move');
       else if (s.selection.length) {
         // Figma: Esc selects the parent.
         const p = findParent(s.doc.nodes, s.selection[0]);
         s.select(p ? [p.id] : []);
-      }
+      } else if (s.linksMode) s.set({ linksMode: false });
       return;
     }
     if (e.key === 'Enter') {
@@ -311,6 +313,11 @@ export function installShortcuts() {
     }
     if (!e.shiftKey && !e.altKey && TOOL_KEYS[k]) {
       s.setTool(TOOL_KEYS[k]);
+      return;
+    }
+    // Links mode: every link and picture on email boards, pinned on the canvas.
+    if (!e.shiftKey && !e.altKey && !mod && k === 'l' && s.project.boards.some((b) => b.kind === 'email')) {
+      s.set({ linksMode: !s.linksMode, linkEdit: s.linksMode ? null : s.linkEdit });
       return;
     }
     // Notes go to the Claude panel, which only the desktop app has.

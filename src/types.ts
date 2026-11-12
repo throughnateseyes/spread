@@ -306,6 +306,20 @@ export interface EmailMeta {
   preheader?: string;
   /** Tags added to every web link at export ("utm_source=x&utm_campaign=y"). The layers keep their plain URLs. */
   tracking?: string;
+  /** Where the exported pictures will live. Saved with the board so every export and every device agree. */
+  hosting?: PictureHosting;
+  /** Layers that look like buttons but are meant to go nowhere (the "needs a link" hint is dismissed). */
+  noLink?: string[];
+}
+
+/** wordpress: Spread uploads them. base: one folder URL + the exported file names. each: a URL per picture. */
+export type PictureHostMode = 'wordpress' | 'base' | 'each';
+
+export interface PictureHosting {
+  mode: PictureHostMode;
+  baseUrl?: string;
+  /** mode 'each': picture URL by layer id. */
+  urls?: Record<string, string>;
 }
 
 export interface Project {
