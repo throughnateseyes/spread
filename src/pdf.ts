@@ -8,19 +8,42 @@ import { paintCanvas } from './gradients';
 import { backdropPicture } from './email/images';
 import { native } from './platform';
 import { walk } from './tree';
+import { linkIssue, nodeLink, withTracking } from './links';
+import { LETTER, pageBreaks, type KeepTogether } from './pdfPages';
 import type { Box, Doc, FrameNode, ImageNode, Paint, SceneNode, Shadow, ShapeNode, TextNode } from './types';
 
 // PDF export: the board is rebuilt as self-contained HTML (one absolutely positioned element per
 // layer, fonts and images inlined) and printed by Electron's Chromium, so text stays real,
 // selectable text. One board unit = 1pt on print documents, 1 CSS px otherwise. Every text line is placed exactly where the canvas draws
 // it (same wrap, same baseline), so the PDF matches the canvas instead of re-flowing.
+// Email boards print 1px = 1pt: one long page the size of the email, or split across Letter pages
+// (scaled to fit the width) with breaks that stay out of text lines. Linked layers stay clickable.
 
 const DPI = 300;
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const n2 = (v: number) => +v.toFixed(3);
-/** Board units → CSS: points for print documents, px for everything else. */
+/** Board units → CSS: points for print documents and emails, px for everything else. */
 let unit: 'pt' | 'px' = 'pt';
-const pt = (v: number) => `${n2(v)}${unit}`;
+/** Board units are drawn this much bigger (smaller, below 1) on the page: emails fitted to Letter. */
+let scale = 1;
+const pt = (v: number) => `${n2(v * scale)}${unit}`;
+
+/** How an email prints: one page the size of the email, or US Letter pages. */
+export type PdfPages = 'one' | 'letter';
+
+/** Which layers to print on the page being built (Letter pages skip what's off the page). */
+type Keep = (n: SceneNode) => boolean;
+/** Tracking tags for an email's web links, as they ship. */
+let linkTracking: string | undefined;
+/** On Letter pages: whether line i of a text layer falls on the page being built. Each line prints on exactly one page. */
+let lineOnPage: ((n: TextNode, i: number) => boolean) | null = null;
+
+/** A clickable area over the layer, when it links somewhere a PDF reader can open. */
+function linkHtml(n: SceneNode, b: Box): string {
+  const url = nodeLink(n)?.trim();
+  if (!url || linkIssue(url) || !/^(https?:|mailto:|tel:)/i.test(url)) return '';
+  return `<a class="n" href="${esc(withTracking(url, linkTracking))}" style="${boxCss(n, b)}"></a>`;
+}
 
 function paintCss(p: Paint | null, b: Box): string {
   if (!p) return '';
@@ -101,11 +124,13 @@ function textHtml(n: TextNode, b: Box): string {
   // Line breaks are already fixed, so no-break characters can go back to their plain forms: many fonts
   // lack a glyph for U+2011, and a fallback font there splits "Gen‑Z" into separate runs in the PDF text.
   const plain = (s: string) => s.replace(/\u2011/g, '-').replace(/\u00a0/g, ' ');
+  const skip = (i: number) => !!lineOnPage && !n.rotation && !lineOnPage(n, i);
   if (hasSpans(n)) {
     // Styled ranges: each line is its runs, every run its own span with what differs from the layer.
     const base = baseStyle(n);
     const inner = richLines(n, b.w)
       .map((l, i) => {
+        if (skip(i)) return '';
         const top = `top:${pt(i * lh)};`;
         const runs = l.segs.map((sg) => {
           const css = runCss(sg.style, base);
@@ -123,6 +148,7 @@ function textHtml(n: TextNode, b: Box): string {
   const lines = textLines(n, b.w).map((l) => ({ ...l, text: plain(l.text) }));
   const inner = lines
     .map((l, i) => {
+      if (skip(i)) return '';
       const top = `top:${pt(i * lh)};`;
       if (n.align === 'justify' && !l.last) {
         return `<div class="ln" style="${top}left:0;width:${pt(b.w)};text-align:justify;text-align-last:justify;${font}">${esc(l.text)}</div>`;
@@ -144,8 +170,13 @@ async function backdropHtml(n: ShapeNode | FrameNode, b: Box, images: Map<string
   return `<img class="n" src="${images.get(key)}" alt="" style="${boxCss(n, b)}">`;
 }
 
-async function nodeHtml(n: SceneNode, b: Box, layout: LayoutMap, images: Map<string, string | null>, backdrop: Backdrop): Promise<string> {
-  if (!n.visible) return '';
+async function nodeHtml(n: SceneNode, b: Box, layout: LayoutMap, images: Map<string, string | null>, backdrop: Backdrop, keep?: Keep): Promise<string> {
+  if (!n.visible || (keep && !keep(n))) return '';
+  // The link goes first: a linked layer's own linked children then sit on top of it.
+  return linkHtml(n, b) + (await layerHtml(n, b, layout, images, backdrop, keep));
+}
+
+async function layerHtml(n: SceneNode, b: Box, layout: LayoutMap, images: Map<string, string | null>, backdrop: Backdrop, keep?: Keep): Promise<string> {
   switch (n.type) {
     case 'text':
       return textHtml(n, b);
@@ -165,7 +196,7 @@ async function nodeHtml(n: SceneNode, b: Box, layout: LayoutMap, images: Map<str
       const kids: string[] = [];
       for (const c of n.children) {
         const cb = layout.get(c.id);
-        if (cb) kids.push(await nodeHtml(c, cb, layout, images, backdrop));
+        if (cb) kids.push(await nodeHtml(c, cb, layout, images, backdrop, keep));
       }
       const radius = n.radius ? `border-radius:${pt(n.radius)};` : '';
       return `${await backdropHtml(n, b, images, backdrop)}<div class="n" style="${boxCss(n, b)}${paintCss(n.fill, b)}${radius}${n.clip ? 'overflow:hidden;' : ''}${strokeCss(n.stroke, n.strokeWidth)}${boxShadowCss(n.shadow)}">${kids.join('')}</div>`;
@@ -222,49 +253,134 @@ export async function fontFaceCss(families: Set<string>): Promise<string> {
 
 // ---------- document ----------
 
-/** Self-contained HTML for a board's pages (one board unit = 1pt). */
-export async function buildPrintHtml(board: Doc, layout: LayoutMap): Promise<string> {
+const PAGE_CSS =
+  `html,body{margin:0;padding:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}` +
+  `.page{position:relative;overflow:hidden;break-after:page}` +
+  `.page:last-child{break-after:auto}` +
+  `.n{position:absolute;box-sizing:border-box;transform-origin:0 0}` +
+  `.ln{position:absolute;white-space:pre;font-kerning:normal;text-rendering:geometricPrecision}`;
+
+/** What a Letter page break should stay out of: every text line, pictures and small pieces, whole sections. */
+function keepTogether(nodes: SceneNode[], abs: Map<string, Box>, pageH: number): KeepTogether[] {
+  const out: KeepTogether[] = [];
+  const small = pageH * 0.6;
+  const rec = (list: SceneNode[], depth: number) => {
+    for (const n of list) {
+      const b = abs.get(n.id);
+      if (!n.visible || !b) continue;
+      const box = (level: KeepTogether['level']) => out.push({ top: b.y, bottom: b.y + b.h, level });
+      if (n.type === 'text') {
+        const lh = n.lineHeight * n.fontSize;
+        if (n.rotation) box(1);
+        else textLines(n, b.w).forEach((_, i) => out.push({ top: b.y + i * lh, bottom: b.y + (i + 1) * lh, level: 1 }));
+      } else if (n.type === 'image') box(2);
+      else if (n.type === 'frame') {
+        // An email is one root column; its children are the sections.
+        if (depth === 1) box(3);
+        else if (b.h < small) box(2);
+        rec(n.children, depth + 1);
+      } else if (b.h < small) box(2);
+    }
+  };
+  rec(nodes, 0);
+  return out;
+}
+
+/** Where an email's Letter pages start and end, in board units (its length is the page count). */
+export function letterBreaks(board: Doc, layout: LayoutMap): [number, number][] {
+  const s = (LETTER.w - 2 * LETTER.margin) / board.slideWidth;
+  const pageH = (LETTER.h - 2 * LETTER.margin) / s;
+  return pageBreaks(board.slideHeight, pageH, keepTogether(board.nodes, absoluteBoxes(board.nodes, layout), pageH));
+}
+
+const htmlPage = (title: string, fontCss: string, css: string, body: string) =>
+  `<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)}</title><style>${fontCss}\n${css}</style></head><body>${body}</body></html>`;
+
+/**
+ * Self-contained HTML for a board's pages (one board unit = 1pt on print documents and emails,
+ * 1 CSS px otherwise), with the page size to print it at. `pages` only applies to emails:
+ * 'letter' splits the email across US Letter pages.
+ */
+export async function buildPrintHtml(board: Doc, layout: LayoutMap, pages: PdfPages = 'one'): Promise<{ html: string; pages: number; widthIn: number; heightIn: number }> {
   const W = board.slideWidth;
   const H = board.slideHeight;
-  unit = board.page?.units === 'px' || board.kind !== 'document' ? 'px' : 'pt';
+  const email = board.kind === 'email';
+  unit = email || (board.kind === 'document' && board.page?.units !== 'px') ? 'pt' : 'px';
+  const letter = email && pages === 'letter';
+  scale = letter ? (LETTER.w - 2 * LETTER.margin) / W : 1;
+  linkTracking = email ? board.email?.tracking : undefined;
   const abs = absoluteBoxes(board.nodes, layout);
   const families = new Set<string>();
   walk(board.nodes, (n) => {
     if (n.type === 'text') families.add(n.fontFamily);
   });
+  const fontCss = await fontFaceCss(families);
   const images = new Map<string, string | null>();
   const backdrop: Backdrop = (n) => backdropPicture(board, n, abs.get(n.id)!, layout);
-  const pages: string[] = [];
-  for (let i = 0; i < board.slides.length; i++) {
-    const x0 = i * W;
-    const parts: string[] = [];
-    for (const n of board.nodes) {
-      const b = abs.get(n.id);
-      if (!b || b.x >= x0 + W || b.x + b.w <= x0) continue;
-      parts.push(await nodeHtml(n, { ...b, x: b.x - x0 }, layout, images, backdrop));
+  const out: string[] = [];
+  try {
+    if (letter) {
+      // Each page shows one band of the email, fitted to the width inside the margins. Layers that
+      // don't reach the band are left out, so pictures aren't repeated on every page.
+      const raw = (v: number) => `${n2(v)}pt`;
+      const m = LETTER.margin;
+      const bg = board.slides[0]?.background ?? board.background;
+      const pad = 40; // shadows reach a little past their layer
+      for (const [y0, y1] of letterBreaks(board, layout)) {
+        const keep: Keep = (n) => {
+          const b = abs.get(n.id);
+          if (!b) return false;
+          // Text is cut to its lines on this page, so a line near the break doesn't print twice.
+          const p = n.type === 'text' ? 0 : pad;
+          return b.y < y1 + p && b.y + b.h > y0 - p;
+        };
+        lineOnPage = (n, i) => {
+          const top = abs.get(n.id)!.y + i * n.lineHeight * n.fontSize;
+          return top + 0.5 < y1 && top + n.lineHeight * n.fontSize - 0.5 > y0;
+        };
+        const parts: string[] = [];
+        for (const n of board.nodes) {
+          const b = abs.get(n.id);
+          if (b) parts.push(await nodeHtml(n, { ...b, y: b.y - y0 }, layout, images, backdrop, keep));
+        }
+        const band = `left:${raw(m)};top:${raw(m)};width:${pt(W)};height:${pt(y1 - y0)};overflow:hidden;background:${bg}`;
+        out.push(`<section class="page" style="width:${raw(LETTER.w)};height:${raw(LETTER.h)};background:#fff"><div class="n" style="${band}">${parts.join('')}</div></section>`);
+      }
+      const css = `@page{size:${raw(LETTER.w)} ${raw(LETTER.h)};margin:0}${PAGE_CSS}`;
+      return { html: htmlPage(board.name, fontCss, css, out.join('')), pages: out.length, widthIn: LETTER.w / 72, heightIn: LETTER.h / 72 };
     }
-    const bg = board.slides[i].background ?? board.background;
-    pages.push(`<section class="page" style="background:${bg}">${parts.join('')}</section>`);
+    for (let i = 0; i < board.slides.length; i++) {
+      const x0 = i * W;
+      const parts: string[] = [];
+      for (const n of board.nodes) {
+        const b = abs.get(n.id);
+        if (!b || b.x >= x0 + W || b.x + b.w <= x0) continue;
+        parts.push(await nodeHtml(n, { ...b, x: b.x - x0 }, layout, images, backdrop));
+      }
+      const bg = board.slides[i].background ?? board.background;
+      out.push(`<section class="page" style="width:${pt(W)};height:${pt(H)};background:${bg}">${parts.join('')}</section>`);
+    }
+    const css = `@page{size:${pt(W)} ${pt(H)};margin:0}${PAGE_CSS}`;
+    const perInch = unit === 'pt' ? 72 : 96;
+    return { html: htmlPage(board.name, fontCss, css, out.join('')), pages: out.length, widthIn: W / perInch, heightIn: H / perInch };
+  } finally {
+    scale = 1;
+    linkTracking = undefined;
+    lineOnPage = null;
   }
-  const css =
-    `@page{size:${pt(W)} ${pt(H)};margin:0}` +
-    `html,body{margin:0;padding:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}` +
-    `.page{position:relative;width:${pt(W)};height:${pt(H)};overflow:hidden;break-after:page}` +
-    `.page:last-child{break-after:auto}` +
-    `.n{position:absolute;box-sizing:border-box;transform-origin:0 0}` +
-    `.ln{position:absolute;white-space:pre;font-kerning:normal;text-rendering:geometricPrecision}`;
-  return `<!doctype html><html><head><meta charset="utf-8"><title>${esc(board.name)}</title><style>${await fontFaceCss(families)}\n${css}</style></head><body>${pages.join('')}</body></html>`;
 }
 
-/** Exports a board as a PDF with real text. Desktop app only. */
-export async function exportPdf(boardId?: string): Promise<{ bytes: Uint8Array; pages: number; name: string }> {
+/**
+ * Exports a board as a PDF with real text. Desktop app only. For an email, `pages` picks one long
+ * page the size of the email (the default) or US Letter pages; other boards keep their own pages.
+ */
+export async function exportPdf(boardId?: string, opts: { pages?: PdfPages } = {}): Promise<{ bytes: Uint8Array; pages: number; name: string }> {
   if (!native?.printPdf) throw new Error('PDF export needs the Spread desktop app.');
   const s = useStore.getState();
   const board = boardId ? s.project.boards.find((b) => b.id === boardId) : s.doc;
   if (!board) throw new Error(`Unknown board "${boardId}"`);
   await document.fonts.ready;
-  const html = await buildPrintHtml(board, getLayout(board.nodes, s.fontsVersion));
-  const perInch = board.kind === 'document' && board.page?.units !== 'px' ? 72 : 96;
-  const bytes = await native.printPdf({ html, widthIn: board.slideWidth / perInch, heightIn: board.slideHeight / perInch });
-  return { bytes, pages: board.slides.length, name: board.name };
+  const built = await buildPrintHtml(board, getLayout(board.nodes, s.fontsVersion), opts.pages);
+  const bytes = await native.printPdf({ html: built.html, widthIn: built.widthIn, heightIn: built.heightIn });
+  return { bytes, pages: built.pages, name: board.name };
 }

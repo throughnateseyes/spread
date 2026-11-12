@@ -48,7 +48,7 @@ Every tool carries MCP safety hints: looking tools are marked read-only, and onl
 | `spread_select` | Select layers in the app |
 | `spread_render_slides` | Render one board's slides as images so Claude can check its work |
 | `spread_export_slides` | Write one board's slides as PNG or JPEG files to a folder (1x, 2x or 3x) |
-| `spread_export_pdf` | Write a board as a PDF with real, selectable text and embedded fonts (one page per page/slide; photos at 300 dpi) |
+| `spread_export_pdf` | Write a board as a PDF with real, selectable text and embedded fonts (one page per page/slide; photos at 300 dpi). Emails print as one long page or US Letter pages, with clickable links |
 | `spread_pdf_text` | Read a PDF's text per page in reading order, the way an applicant-tracking system or screen reader sees it |
 | `spread_lint` | The app's layout checks: off-page, crosses-page, margin, overflow, tiny text, line length, widows, baseline, contrast, overlap, alignment near-misses, spacing, type sprawl, empty pages. With a project brand, also `brand-font`, `brand-color` and `brand-scale` |
 | `spread_batch` | Several methods in one call, stopping at the first error (fewer round trips and permission prompts); rendered images come back as images |

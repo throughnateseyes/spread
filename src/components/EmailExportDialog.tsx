@@ -35,6 +35,7 @@ import { blobToDataUrl } from '../pdf';
 import { getAsset } from '../assets';
 import { findNode } from '../tree';
 import { PictureAddressField } from './PictureAddress';
+import EmailPdfButton from './EmailPdfButton';
 
 // Email export. Step one is short on purpose: how the send check stands, anything still to fix
 // (fixed on the canvas, not here), where the pictures live, and the HTML size. Subject, preview
@@ -388,6 +389,7 @@ export default function EmailExportDialog({ onClose, root }: Props) {
           <span className="muted">
             {root.w}×{Math.round(height)} · {formatKb(compiled.bytes)}
           </span>
+          <EmailPdfButton />
           <Button onClick={onClose}>Cancel</Button>
           <Button primary onClick={goReview} disabled={!!busy}>
             Preview &amp; export

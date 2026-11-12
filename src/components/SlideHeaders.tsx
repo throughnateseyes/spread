@@ -182,6 +182,7 @@ function BoardChrome({
         ]
       : []),
     { label: 'Export this row…', fn: () => (activate(), s().set({ modal: 'export' })) },
+    ...(board.kind === 'email' && isElectron ? [{ label: 'Save as PDF…', fn: () => (activate(), s().set({ modal: 'pdf' })) }] : []),
     ...(isElectron
       ? [
           { label: 'Save as template…', fn: () => askSaveToLibrary({ kind: 'template', boardId: board.id, name: board.name }) },
