@@ -113,6 +113,9 @@ body {
   user-select: none;
   -webkit-font-smoothing: antialiased;
 }
+/* Read-only text people want to copy: layout checks, email notes, the send checklist, errors. The
+   Claude transcript has its own rule. ⌘A inside one selects just it (SCOPE in shortcuts.ts). */
+.lint-list li, .em-warnings li, .send-detail, .io-error, .chat-step-error, .chat-notice-body > div:first-child { user-select: text; cursor: text; }
 button, input, select, textarea { font: inherit; color: inherit; }
 button { cursor: pointer; }
 input, select, textarea { font-variant-numeric: tabular-nums; }

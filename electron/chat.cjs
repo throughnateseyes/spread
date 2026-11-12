@@ -69,7 +69,9 @@ function load(key) {
 function persist(c) {
   try {
     fs.mkdirSync(DIR, { recursive: true });
-    fs.writeFileSync(fileOf(c.key), JSON.stringify({ key: c.key, sessionId: c.sessionId, items: c.items.slice(-400), lastPayload: c.lastPayload, notes: Object.fromEntries(Object.entries(c.notes).slice(-400)), updatedAt: Date.now() }));
+    // Pictures stay out of the file: the transcript keeps thumbnails, and Claude Code has the rest.
+    const lastPayload = c.lastPayload && { ...c.lastPayload, images: undefined };
+    fs.writeFileSync(fileOf(c.key), JSON.stringify({ key: c.key, sessionId: c.sessionId, items: c.items.slice(-400), lastPayload, notes: Object.fromEntries(Object.entries(c.notes).slice(-400)), updatedAt: Date.now() }));
   } catch (e) {
     console.warn('Could not save chat:', e.message);
   }
@@ -85,7 +87,27 @@ function chatFor(key) {
   return c;
 }
 
-const snapshot = (c) => ({ key: c.key, items: c.items, notes: c.notes, queued: c.queued.map(({ id, text, noteId }) => ({ id, text, noteId })), status: c.status, hasSession: !!c.sessionId });
+const snapshot = (c) => ({ key: c.key, items: c.items, notes: c.notes, queued: c.queued.map(({ id, text, noteId, thumbs }) => ({ id, text, noteId, images: thumbs })), status: c.status, hasSession: !!c.sessionId });
+
+// ---------- pictures in messages ----------
+
+const MEDIA = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
+
+/** The pictures the renderer sent that Claude can read (it already resized them). */
+const usable = (images) => (Array.isArray(images) ? images.filter((im) => im && MEDIA.has(im.mediaType) && typeof im.data === 'string' && im.data) : []);
+
+/** What the transcript keeps of each picture: a small thumbnail, never the full image. */
+const thumbsOf = (images) => {
+  const t = usable(images).map((im) => ({ thumb: typeof im.thumb === 'string' && im.thumb.length < 200000 ? im.thumb : '', name: String(im.name || 'Picture'), width: im.width || 0, height: im.height || 0 }));
+  return t.length ? t : undefined;
+};
+
+/** A user message for stream-json: plain text, or image blocks followed by the text. */
+function messageContent(content, images) {
+  const pics = usable(images);
+  if (!pics.length) return content;
+  return [...pics.map((im) => ({ type: 'image', source: { type: 'base64', media_type: im.mediaType, data: im.data } })), { type: 'text', text: content }];
+}
 
 // Canvas comments, by note id: waiting (sent, unread) → working (Claude read it) → done (that turn
 // ended). A note can't be left waiting or working once nothing will finish it, so everything that
@@ -201,7 +223,7 @@ async function start(c) {
     settleNotes(c, 'stopped');
     // Anything Claude never read stays visible, so a crash can't quietly swallow a message.
     if (c.queued.length) {
-      for (const q of c.queued.splice(0)) push(c, { kind: 'user', text: q.text, label: q.label || null });
+      for (const q of c.queued.splice(0)) push(c, { kind: 'user', text: q.text, label: q.label || null, images: q.thumbs });
       push(c, { kind: 'notice', tone: 'error', text: 'Claude stopped before reading your last message. Send it again.' });
     }
     c.status = 'idle';
@@ -291,7 +313,8 @@ function onAssistant(c, m) {
 /** Claude Code echoes each message as it reads it, which is when a queued one joins the transcript. */
 function onReplay(c, m) {
   const content = m.message && m.message.content;
-  const text = Array.isArray(content) ? content.map((b) => b.text || '').join('') : content;
+  // Image blocks echo too; only the text says which message this is.
+  const text = Array.isArray(content) ? content.map((b) => (b && b.type === 'text' ? b.text || '' : '')).join('') : content;
   // Read mid-turn, each message echoes alone. Waiting for the next turn, they're joined into one
   // message and echo as one, so look for every queued message inside the echo.
   const read = typeof text === 'string' ? c.queued.filter((q) => text.includes(q.content)) : [];
@@ -299,7 +322,7 @@ function onReplay(c, m) {
   c.queued = c.queued.filter((q) => !read.includes(q));
   for (const q of read) {
     if (q.noteId) c.notes[q.noteId] = 'working';
-    push(c, { kind: 'user', text: q.text, label: q.label || null });
+    push(c, { kind: 'user', text: q.text, label: q.label || null, images: q.thumbs });
   }
   persist(c);
   emit(c, true);
@@ -506,7 +529,8 @@ function open(key) {
   return snapshot(chatFor(key));
 }
 
-async function sendMessage({ key, cwd, text, content, label, noteId }) {
+async function sendMessage({ key, cwd, text, content, label, noteId, images }) {
+  const thumbs = thumbsOf(images);
   const c = chatFor(key);
   if (cwd) {
     // Claude Code's working folder (and its CLAUDE.md) follows the project; restart if it moved.
@@ -515,13 +539,13 @@ async function sendMessage({ key, cwd, text, content, label, noteId }) {
   }
   // Claude Code reads a message sent mid-turn at its next step, so the user can steer without waiting.
   if (c.status === 'working') {
-    c.queued.push({ id: `q${c.nextId++}`, text, content, label, noteId });
+    c.queued.push({ id: `q${c.nextId++}`, text, content, label, noteId, thumbs });
     if (noteId) c.notes[noteId] = 'waiting';
     emit(c, true);
   } else {
-    c.lastPayload = { text, content, label, noteId, at: Date.now() };
+    c.lastPayload = { text, content, label, noteId, images, at: Date.now() };
     if (noteId) c.notes[noteId] = 'working';
-    push(c, { kind: 'user', text, label: label || null });
+    push(c, { kind: 'user', text, label: label || null, images: thumbs });
     setStatus(c, 'working');
   }
   if (!c.proc) {
@@ -532,7 +556,7 @@ async function sendMessage({ key, cwd, text, content, label, noteId }) {
       return emit(c, true);
     }
   }
-  write(c, { type: 'user', message: { role: 'user', content }, parent_tool_use_id: null, session_id: c.sessionId || '' });
+  write(c, { type: 'user', message: { role: 'user', content: messageContent(content, images) }, parent_tool_use_id: null, session_id: c.sessionId || '' });
 }
 
 /** Sends the last message again (after signing in, say), without repeating it in the transcript. */
@@ -544,7 +568,7 @@ async function retry(key) {
   if (p.noteId) c.notes[p.noteId] = 'working';
   setStatus(c, 'working');
   if (!c.proc && !(await start(c))) return settleNotes(c, 'stopped');
-  write(c, { type: 'user', message: { role: 'user', content: p.content }, parent_tool_use_id: null, session_id: c.sessionId || '' });
+  write(c, { type: 'user', message: { role: 'user', content: messageContent(p.content, p.images) }, parent_tool_use_id: null, session_id: c.sessionId || '' });
 }
 
 function stop(key, kill = false) {
