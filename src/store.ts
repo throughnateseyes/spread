@@ -104,6 +104,10 @@ interface State {
   /** The pin whose popover is open. */
   openComment: string | null;
   showComments: boolean;
+  /** Email boards: dims the design and pins every link and picture's status on the canvas (L). */
+  linksMode: boolean;
+  /** The link and picture entry being edited, and where its editor opened. */
+  linkEdit: { boardId: string; id: string; from: 'canvas' | 'panel' } | null;
 
   change: (fn: (d: Doc) => void, key?: string) => void;
   changeProject: (fn: (p: Project) => void, key?: string) => void;
@@ -269,6 +273,8 @@ export const useStore = create<State>((set, get) => {
   commentDraft: null,
   openComment: null,
   showComments: true,
+  linksMode: false,
+  linkEdit: null,
 
   change: (fn, key) => {
     commit(
@@ -366,7 +372,16 @@ export const useStore = create<State>((set, get) => {
       if (b) Object.assign(b, patch);
     }, 'board-' + id),
 
-  select: (ids) => set({ selection: ids, editingTextId: null, croppingId: get().croppingId && ids.includes(get().croppingId!) ? get().croppingId : null }),
+  select: (ids) => {
+    const { croppingId, linkEdit } = get();
+    set({
+      selection: ids,
+      editingTextId: null,
+      croppingId: croppingId && ids.includes(croppingId) ? croppingId : null,
+      // Selecting something else closes the link editor.
+      linkEdit: linkEdit && ids.includes(linkEdit.id) ? linkEdit : null,
+    });
+  },
   setTool: (tool) => set({ tool, editingTextId: null, croppingId: null, commentDraft: null, openComment: null }),
   setView: (v) => set({ view: { ...get().view, ...v } }),
   set: (patch) => set(patch),

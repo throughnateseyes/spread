@@ -261,6 +261,8 @@ function ZoomMenu({ zoom }: { zoom: number }) {
   const showSeams = useStore((s) => s.showSeams);
   const showComments = useStore((s) => s.showComments);
   const showIgCrop = useStore((s) => s.showIgCrop);
+  const linksMode = useStore((s) => s.linksMode);
+  const hasEmail = useStore((s) => s.project.boards.some((b) => b.kind === 'email'));
   const snap = useStore((s) => s.snap);
   const grid = useStore((s) => s.doc.grid.visible);
   const { set, change } = useStore.getState();
@@ -274,6 +276,7 @@ function ZoomMenu({ zoom }: { zoom: number }) {
     null,
     { label: 'Slide seams', checked: showSeams, fn: () => set({ showSeams: !showSeams }) },
     ...(isElectron ? [{ label: 'Comments', checked: showComments, fn: () => set({ showComments: !showComments, openComment: null }) }] : []),
+    ...(hasEmail ? [{ label: 'Links and pictures', kbd: 'L', checked: linksMode, fn: () => set({ linksMode: !linksMode, linkEdit: null }) }] : []),
     { label: 'Layout grid', kbd: `${MOD}+'`, checked: grid, fn: () => change((d) => void (d.grid.visible = !d.grid.visible)) },
     { label: 'IG profile-grid crop (3:4)', checked: showIgCrop, fn: () => set({ showIgCrop: !showIgCrop }) },
     { label: 'Snap to grid, seams & layers', checked: snap, fn: () => set({ snap: !snap }) },

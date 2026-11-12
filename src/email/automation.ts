@@ -25,8 +25,10 @@ function activeEmailRoot() {
 function compile(p: Params, hosted: Record<string, string> = {}) {
   const { doc, root } = activeEmailRoot();
   const layout = currentLayout();
-  const urls: Record<string, string> = { ...hosted, ...(p.urls ?? {}) };
-  const base: string = p.baseUrl ?? '';
+  // The board remembers where its pictures live; explicit params win.
+  const h = doc.email?.hosting;
+  const urls: Record<string, string> = { ...(h?.mode === 'each' ? h.urls : {}), ...hosted, ...(p.urls ?? {}) };
+  const base: string = p.baseUrl ?? (h?.mode === 'base' ? h.baseUrl?.trim() ?? '' : '');
   const result = buildEmailHtml(root, layout, {
     title: p.title ?? doc.email?.subject ?? doc.name,
     preheader: p.preheader ?? doc.email?.preheader ?? '',
@@ -162,7 +164,7 @@ export const emailHandlers: Record<string, (p: Params) => Promise<unknown> | unk
       preheader: p.preheader ?? doc.email?.preheader ?? null,
       ...(hosting ? { hosted: { uploaded: hosting.uploaded, reused: hosting.reused, urls: hosting.urls } } : {}),
       note:
-        hosting || p.baseUrl || p.urls || !images.length
+        hosting || p.baseUrl || p.urls || !images.length || (doc.email?.hosting?.mode === 'base' && doc.email.hosting.baseUrl) || doc.email?.hosting?.mode === 'each'
           ? undefined
           : 'Image src attributes are bare file names. If WordPress is connected (the user connects it once in Export → Upload to WordPress), export again with host: "wordpress"; otherwise ask for the base URL the images were uploaded to and export with baseUrl.',
     };

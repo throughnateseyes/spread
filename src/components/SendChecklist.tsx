@@ -3,16 +3,23 @@ import { emailRootOf } from '../email/boards';
 import { sendChecks, type SendCheck, type SendCheckId } from '../email/checklist';
 import { useLayout, useStore } from '../store';
 import { IconCheck, IconWarning } from '../ui/icons';
+import { openLinkItem, revealLinkItem } from './LinkEditor';
 
 // The send checklist, pinned above the Design panel so it stays put whatever is selected.
 // Each chip says how one check stands, and clicking it goes to the problem.
 
-function go(check: SendCheck) {
+/** Goes to what a check is about: the subject field, or the layers on the canvas. */
+export function goToCheck(check: SendCheck) {
   const s = useStore.getState();
   if (check.id === 'subject') {
     s.select([]);
     // The field only exists once the panel has swapped back to the board.
     requestAnimationFrame(() => window.dispatchEvent(new Event('spread:focus-subject')));
+  } else if (check.id === 'links' && check.ids.length) {
+    // Broken links are fixed one after another in Links mode.
+    s.set({ linksMode: true });
+    openLinkItem(s.doc.id, check.ids[0], 'canvas');
+    revealLinkItem(s.doc.id, check.ids[0]);
   } else if (check.ids.length) {
     s.select(check.ids);
     window.dispatchEvent(new Event('spread:zoom-selection'));
@@ -51,7 +58,7 @@ export function SendChecklist() {
             aria-expanded={open === c.id}
             onClick={() => {
               setOpen(open === c.id ? null : c.id);
-              if (open !== c.id) go(c);
+              if (open !== c.id) goToCheck(c);
             }}
           >
             {c.level === 'ok' ? <IconCheck size={12} /> : <IconWarning size={12} />}

@@ -3,7 +3,8 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { MOD, useLayout, useStore } from '../store';
 import { absoluteBox, inAutoLayout, type LayoutMap } from '../layout';
 import { findNode, findParent, pathTo } from '../tree';
-import { LINK_ISSUE_TEXT, collectLinks, linkIssue, nodeLink, normaliseLink, setNodeLink } from '../links';
+import { LINK_ISSUE_TEXT, linkIssue, nodeLink, normaliseLink, setNodeLink } from '../links';
+import { LinksPanel } from './LinksPanel';
 import { getAsset } from '../assets';
 import { colorBytes } from '../effects';
 import { EffectsSection } from './EffectsSection';
@@ -160,38 +161,6 @@ function InboxSection() {
   );
 }
 
-/** Every link on the email in one place, and the tracking tags they all share. */
-function LinksSection() {
-  const doc = useStore((s) => s.doc);
-  const select = useStore((s) => s.select);
-  const links = useMemo(() => collectLinks(doc.nodes), [doc.nodes]);
-  const open = links.filter((l) => l.issue).length;
-  const setTracking = (tracking: string) => useStore.getState().updateBoard(doc.id, { email: { ...doc.email, tracking } });
-  return (
-    <Section title="Links" actions={open > 0 ? <span className="link-count warn">{open} to fix</span> : undefined}>
-      {links.length === 0 && <p className="link-empty">Select a layer to give it a link.</p>}
-      {links.length > 0 && (
-        <ul className="link-list">
-          {links.map((l) => (
-            <li key={l.id}>
-              <button className={`link-row ${l.issue ? 'warn' : ''}`} title={l.issue ? LINK_ISSUE_TEXT[l.issue] : l.url} onClick={() => select([l.id])}>
-                <span className="link-row-name ellipsis">{l.name}</span>
-                <span className="link-row-url ellipsis">{l.issue ? LINK_ISSUE_TEXT[l.issue] : l.url.replace(/^https?:\/\/(www\.)?/, '')}</span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-      <label className="inbox-field">
-        <span className="inbox-label">Tracking tags</span>
-        <div className="field">
-          <input value={doc.email?.tracking ?? ''} placeholder="utm_source=…&utm_campaign=…" spellCheck={false} onChange={(e) => setTracking(e.target.value)} />
-        </div>
-      </label>
-    </Section>
-  );
-}
-
 /** The link on the selected layers. Email only: nothing else exports links. */
 function LinkSection({ sel, upd }: { sel: SceneNode[]; upd: (fn: (n: SceneNode) => void, key?: string) => void }) {
   const nodes = useStore((s) => s.doc.nodes);
@@ -300,7 +269,7 @@ function DocumentPanel() {
       )}
 
       {email && <InboxSection />}
-      {email && <LinksSection />}
+      {email && <LinksPanel />}
       <OverlaySection />
 
       <Section title="Background">

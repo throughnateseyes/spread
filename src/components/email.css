@@ -27,7 +27,15 @@
 .em-size-over .em-size-row b { color: var(--danger); }
 
 .em-warnings { border: 1px solid var(--warn-line); background: var(--warn-soft); border-radius: var(--radius-lg); padding: 8px 12px; }
-.em-warnings .em-label { color: var(--warn); }
+.em-warnings .em-label { color: var(--warn); cursor: pointer; list-style: none; }
+.em-warnings .em-label::-webkit-details-marker { display: none; }
+.em-warnings:not([open]) ul { display: none; }
+.em-checks { display: flex; flex-wrap: wrap; gap: 4px; }
+.em-fix { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: var(--radius-lg); border: 1px solid var(--warn-line); background: var(--warn-soft); font-size: 12px; line-height: 1.45; }
+.em-fix > span { flex: 1; min-width: 0; }
+.em-fix b { font-weight: 600; }
+.em-fix .btn, .em-fix button { flex: none; }
+.em-stack { display: flex; flex-direction: column; gap: 6px; }
 .em-warnings ul { margin: 8px 0 0; padding-left: 16px; display: flex; flex-direction: column; gap: 4px; max-height: 180px; overflow: auto; }
 .em-warnings li { color: var(--text); font-size: 12px; line-height: 1.45; }
 
