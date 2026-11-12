@@ -1,6 +1,7 @@
 import { normaliseSpans, remapSpans, resolveSpanInput } from './richtext';
 import { emailHandlers } from './email/automation';
 import { emailRootOf } from './email/boards';
+import { emailTextDefaults } from './email/templates';
 import { boardHosting, hostingStatus } from './email/hosting';
 import { linkItems } from './email/linkmap';
 import { createFromTemplate, libraryForClaude, saveReference, saveTemplate } from './library';
@@ -130,7 +131,8 @@ function fromSpec(spec: Params): SceneNode {
   let n: SceneNode;
   switch (spec.type) {
     case 'text':
-      n = makeText(x, y, spec.text ?? 'Text');
+      // Email text starts in Arial, which inboxes have; values in the spec still win.
+      n = makeText(x, y, spec.text ?? 'Text', useStore.getState().doc.kind === 'email' ? emailTextDefaults() : {});
       if (spec.w !== undefined && spec.sizingH === undefined) n.sizingH = 'fixed';
       break;
     case 'image':

@@ -47,6 +47,15 @@ const ROLES: Record<Role, Partial<TextNode> & { fontSize: number; lh: number }> 
 
 const pad = (t: number, r = t, b = t, l = r) => ({ t, r, b, l });
 
+/**
+ * What new text on an email board starts as: body copy in Arial, which every inbox has, so the
+ * canvas wraps lines the way the sent email will.
+ */
+export function emailTextDefaults(): Partial<TextNode> {
+  const { lh, ...body } = ROLES.body;
+  return { ...body, lineHeight: lh / body.fontSize, letterSpacing: 0 };
+}
+
 /** Text in a role. Wraps to its container (fill width) unless `hug` is set. */
 export function emailText(text: string, role: Role, patch: Partial<TextNode> & { hug?: boolean } = {}): TextNode {
   const { lh, ...spec } = ROLES[role];
@@ -224,7 +233,7 @@ export function detailsSection(title: string | null, rows: [string, string][], i
       const line = row(
         `Row / ${label}`,
         [emailText(label, 'detailLabel', { sizingH: 'fixed', w: 110 }), emailText(value, 'detailValue')],
-        { padding: pad(10, 0), gap: 12, alignItems: 'start', name: `Row / ${label} [nostack]` },
+        { padding: pad(10, 0), gap: 12, alignItems: 'start', phoneStack: 'side-by-side' },
       );
       return i === 0 ? [rule(), line, rule()] : [line, rule()];
     }),
@@ -256,7 +265,7 @@ export function footerSection(): FrameNode {
       dot(),
       white('YouTube', '{{YOUTUBE_URL}}'),
     ],
-    { sizingH: 'hug', gap: 8, alignItems: 'center', name: 'Socials [nostack]' },
+    { sizingH: 'hug', gap: 8, alignItems: 'center', phoneStack: 'side-by-side' },
   );
   const fine = column(
     'Fine print',

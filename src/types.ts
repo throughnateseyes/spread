@@ -131,6 +131,8 @@ export interface ImageNode extends BaseNode {
   effects?: PhotoEffect[];
   stroke: string | null;
   strokeWidth: number;
+  /** Email: on phones the picture spans the whole screen, edge to edge, whatever the padding around it. */
+  phoneFullWidth?: boolean;
 }
 
 export interface TextNode extends BaseNode {
@@ -198,6 +200,13 @@ export interface FrameNode extends BaseNode {
   children: SceneNode[];
   /** This frame's children are generated from a table of cards. See repeat.ts. */
   repeat?: RepeatSpec;
+  /**
+   * Email rows: how the row lays out on phones. 'stack' puts the cells one under another,
+   * 'side-by-side' keeps them across. Unset = automatic (rows of photos or cards stack).
+   */
+  phoneStack?: 'stack' | 'side-by-side';
+  /** Email: on phones the frame spans the whole screen, edge to edge, whatever the padding around it. */
+  phoneFullWidth?: boolean;
 }
 
 export type SceneNode = ImageNode | TextNode | ShapeNode | FrameNode;

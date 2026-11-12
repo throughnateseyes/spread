@@ -4,7 +4,7 @@ import { fontWeights } from './fonts';
 import { LINK_ISSUE_TEXT, collectLinks } from './links';
 import { STYLE_LABEL, styleDiffs } from './tokens';
 import { walk } from './tree';
-import type { Box, Brand, Doc, Paint, Project, SceneNode, TextNode } from './types';
+import type { Box, Brand, Doc, FrameNode, Paint, Project, SceneNode, TextNode } from './types';
 
 // Layout lint: the mechanical checks ("the Floor") the app can compute exactly, so Claude spends
 // its attention on taste instead of eyeballing margins. Pure function of the board + its layout,
@@ -51,12 +51,15 @@ const contains = (outer: Box, p: { x: number; y: number }) => p.x >= outer.x && 
 
 export function lintBoard(doc: Doc, layout: LayoutMap, brand: Brand | null = null, project: Project | null = null): { issues: LintIssue[]; summary: string } {
   const issues: LintIssue[] = [];
-  lintWeights(doc, issues);
+  // Inboxes draw email text in their own fonts (Arial or Georgia, which have a regular and a
+  // bold), so the weights a canvas font ships say nothing about how an email looks.
+  if (doc.kind !== 'email') lintWeights(doc, issues);
   lintRepeats(doc, issues);
   lintGrouping(doc, issues);
   if (project) lintStyles(doc, project, issues);
   if (doc.kind === 'email') {
     lintLinks(doc, issues);
+    lintNarrowText(doc, layout, issues);
     if (brand) lintBrand(doc, brand, 'px', issues);
     return summarize(issues, 'Email layout is checked by spread_email_html.');
   }
@@ -280,6 +283,40 @@ function lintStyles(doc: Doc, project: Project, issues: LintIssue[]) {
     });
     if (off.length) issues.push({ severity: 'warn', rule: 'text-style', message: `${off.length} ${off.length === 1 ? 'layer differs' : 'layers differ'} from ${style.name}: ${[...what].join(', ')}.`, page: null, ids: off.map((n) => n.id), keys: off.map((n) => n.key ?? null) });
   }
+}
+
+/**
+ * Email text boxed to a fixed width inside a wider card or column. The email keeps that width, so
+ * it wraps where the canvas does, and an inbox font that runs wider (Arial for Roboto) breaks it in
+ * new places: "1050 Post / St". Text that hugs its words or fills the card has no such limit.
+ */
+function lintNarrowText(doc: Doc, layout: LayoutMap, issues: LintIssue[]) {
+  const visit = (list: SceneNode[], parent: FrameNode | null) => {
+    for (const n of list) {
+      if (!n.visible) continue;
+      if (n.type === 'frame') {
+        if (n.layout !== 'none') visit(n.children, n);
+        continue;
+      }
+      if (n.type !== 'text' || n.sizingH === 'hug' || !parent || parent.layout !== 'column' || !/\S\s+\S/.test(n.text.trim())) continue;
+      const b = layout.get(n.id);
+      const pb = layout.get(parent.id);
+      if (!b || !pb) continue;
+      const cell = pb.w - parent.padding.l - parent.padding.r;
+      if (b.w > cell * 0.75 || cell - b.w < 24 || textLines(n, b.w).length < 2) continue;
+      const quote = `"${n.text.trim().slice(0, 32).replace(/\n/g, ' ')}${n.text.trim().length > 32 ? '…' : ''}"`;
+      const where = /card/i.test(parent.name) || parent.fill ? 'card' : 'column';
+      issues.push({
+        severity: 'warn',
+        rule: 'narrow-text',
+        message: `${quote} is boxed to ${Math.round(b.w)}px inside a ${Math.round(cell)}px ${where}, so it wraps there, and inboxes that swap in a wider font can break it in new places. Set its width to Fill so it uses the whole ${where}.`,
+        page: null,
+        ids: [n.id],
+        keys: [n.key ?? null],
+      });
+    }
+  };
+  visit(doc.nodes, null);
 }
 
 function lintLinks(doc: Doc, issues: LintIssue[]) {

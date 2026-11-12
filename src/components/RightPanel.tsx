@@ -19,6 +19,7 @@ import { fallbackStack, isWebSafe } from '../email/html';
 import { Tooltip } from '../ui/Tooltip';
 import { LastChange } from './HistoryTab';
 import { SendChecklist } from './SendChecklist';
+import { PhoneLayoutSection } from './PhoneLayoutSection';
 import {
   ICON_DENSE,
   IconAlignBottom,
@@ -462,6 +463,7 @@ function SelectionPanel({ sel }: { sel: SceneNode[] }) {
       {(type === 'rect' || type === 'ellipse') && <ShapeSection sel={sel} upd={upd} />}
       {type === 'frame' && <FrameSection sel={sel as FrameNode[]} upd={upd} />}
       {doc.kind === 'email' && <LinkSection sel={sel} upd={upd} />}
+      {doc.kind === 'email' && <PhoneLayoutSection sel={sel} upd={upd} />}
       <AppearanceSection sel={sel} upd={upd} />
       <ShadowSection sel={sel} upd={upd} />
     </>

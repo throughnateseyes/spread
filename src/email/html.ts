@@ -11,16 +11,23 @@ import { nodeLink, withTracking } from '../links';
 // Every frame becomes a presentation table. Column frames stack one <tr> per child, with the
 // gap and padding carried as td padding (taken from the computed layout boxes, so justify and
 // fixed heights come out right). Row frames become one <tr> with a td per child and spacer tds
-// for gaps; rows that hold photos or cards stack on phones via a media query. Text is a styled
-// td, photos are <img> tags pointing at hosted copies (rendered by images.ts), and anything
-// free-positioned (layout 'none') is flattened into one picture.
+// for gaps; rows that hold photos or cards stack on phones via a media query (a row's
+// `phoneStack` overrides that). Text is a styled td, photos are <img> tags pointing at hosted
+// copies (rendered by images.ts), and anything free-positioned (layout 'none') is flattened into
+// one picture.
+//
+// Text that hugs its words never gets a fixed px column: inboxes swap in wider fonts, and a
+// column cut to the canvas width breaks "1050 Post St" in two. In a column it fills the cell; in
+// a row it can't wrap on desktop. `phoneFullWidth` on a picture (or frame) takes it edge to edge
+// on phones by dropping the side padding around it there and giving that padding back to
+// everything beside it.
 //
 // A layer's `link` property links it and everything inside it (see links.ts).
 // Naming conventions read from layer names (tags are stripped from alt text):
 //   [link:https://…]  the older form of `link`, still read
 //   [alt:…]           alt text for a photo (otherwise the layer name is used)
 //   [button]          force a frame to compile as a bulletproof button
-//   [stack] / [nostack]  force a row to stack (or not) on phones
+//   [stack] / [nostack]  the older form of `phoneStack`, still read (the property wins)
 //   [raster]          flatten a frame into one picture even if it uses auto layout
 
 export const GMAIL_CLIP_BYTES = 102_000;
@@ -66,6 +73,14 @@ export interface EmailHtmlOptions {
   breakpoint?: number;
   /** Preview only: draws each picture as the empty box a blocked image leaves, with its alt text. */
   imagesOff?: boolean;
+  /** Preview only: marks each text cell with data-sid="<layer id>" so the preview can measure it. */
+  tagText?: boolean;
+}
+
+/** A text (or inline row) inside a row that stays side by side on phones. */
+export interface TwoAcrossText {
+  id: string;
+  rowId: string;
 }
 
 export interface EmailHtmlResult {
@@ -78,6 +93,8 @@ export interface EmailHtmlResult {
   bytes: number;
   /** Every font family the email asks for. */
   fonts: string[];
+  /** Texts in rows of cards that stay side by side on phones, where they get half a phone's width. */
+  twoAcross: TwoAcrossText[];
 }
 
 // ---------- small helpers ----------
@@ -128,6 +145,31 @@ export function parseNameTags(name: string): NameTags {
     .replace(/\s+/g, ' ')
     .trim();
   return { clean, link, alt, flags };
+}
+
+/** A row's phone setting: its `phoneStack`, else an older [stack] / [nostack] name tag, else automatic. */
+export function phoneStackSetting(f: FrameNode): 'stack' | 'side-by-side' | undefined {
+  if (f.phoneStack === 'stack' || f.phoneStack === 'side-by-side') return f.phoneStack;
+  const tags = parseNameTags(f.name).flags;
+  if (tags.has('nostack')) return 'side-by-side';
+  if (tags.has('stack')) return 'stack';
+  return undefined;
+}
+
+/** What "automatic" does: rows holding photos or cards (120px or wider) stack on phones. */
+export function autoStacks(f: FrameNode, layout: LayoutMap): boolean {
+  const kids = f.children.filter((c) => c.visible);
+  if (kids.length < 2) return false;
+  return kids.some((c) => {
+    const b = layout.get(c.id);
+    return !!b && b.w >= 120 && (c.type === 'image' || c.type === 'frame' || c.type === 'ellipse');
+  });
+}
+
+/** Whether a row frame stacks on phones in the compiled email. */
+export function rowStacksOnPhones(f: FrameNode, layout: LayoutMap): boolean {
+  const set = phoneStackSetting(f);
+  return set ? set === 'stack' : autoStacks(f, layout);
 }
 
 function slug(s: string) {
@@ -201,6 +243,13 @@ interface Env {
   href: string | null;
   /** Inside a row that stacks on phones. */
   stacked: boolean;
+  /**
+   * Side padding (left, right) dropped on phones somewhere above, to let a full-width picture
+   * reach the edges. Cells here that aren't on the way to that picture add it back.
+   */
+  restore?: [number, number];
+  /** Inside a row of cards that stays side by side on phones (its id). */
+  twoAcross?: string;
 }
 
 interface Place {
@@ -221,6 +270,8 @@ interface Place {
   /** Row cell whose child fills the row's height: let it stretch instead of fixing a height. */
   stretch?: boolean;
   bgcolor?: string;
+  /** Phones: drop this cell's side padding ('edge'), or add `restore` to it. */
+  phone?: 'edge' | [number, number];
 }
 
 class Compiler {
@@ -232,11 +283,51 @@ class Compiler {
   hrefs: string[] = [];
   hasUnsubscribe = false;
   emptyPhotos: string[] = [];
+  /** Full-width-on-phones layers and every frame that holds one. */
+  bleed = new Set<string>();
+  /** The full-width-on-phones layers themselves. */
+  edgeNodes = new Set<string>();
+  padClasses = { l: new Set<number>(), r: new Set<number>() };
+  usesEdge = false;
+  twoAcross: TwoAcrossText[] = [];
 
   constructor(
     readonly layout: LayoutMap,
     readonly opts: EmailHtmlOptions,
   ) {}
+
+  /** Marks layers set to full width on phones, and the frames on the way down to them. */
+  markBleed(nodes: SceneNode[]): boolean {
+    let any = false;
+    for (const n of nodes) {
+      if (!n.visible) continue;
+      const own = (n.type === 'image' || n.type === 'frame') && !!n.phoneFullWidth;
+      const inside = n.type === 'frame' && n.layout !== 'none' ? this.markBleed(n.children) : false;
+      if (own) this.edgeNodes.add(n.id);
+      if (own || inside) {
+        this.bleed.add(n.id);
+        any = true;
+      }
+    }
+    return any;
+  }
+
+  /**
+   * Phone padding for a child cell. On the way to a full-width picture the cell drops its side
+   * padding (and the child remembers how much went); a cell beside it gets back what was dropped above.
+   */
+  phonePlace(c: SceneNode, pad: [number, number], env: Env, canBleed = true): { phone?: Place['phone']; restore?: [number, number] } {
+    const owed = env.restore ?? [0, 0];
+    if (canBleed && this.bleed.has(c.id)) return { phone: 'edge', restore: [owed[0] + pad[0], owed[1] + pad[1]] };
+    if (owed[0] || owed[1]) return { phone: owed };
+    return {};
+  }
+
+  /** data-sid for preview measuring, and the two-across list. */
+  textAttrs(id: string, env: Env): string[] {
+    if (env.twoAcross) this.twoAcross.push({ id, rowId: env.twoAcross });
+    return this.opts.tagText ? [`data-sid="${escAttr(id)}"`] : [];
+  }
 
   warn(msg: string, key = msg) {
     if (this.warned.has(key)) return;
@@ -296,22 +387,27 @@ class Compiler {
 
   // ----- frames -----
 
-  frameTable(f: FrameNode, box: Box, env: Env, width: 'full' | number, align?: 'left' | 'center' | 'right'): string {
+  /** `width` 'auto' shrinks the table to its content, like a hugging frame of text. */
+  frameTable(f: FrameNode, box: Box, env: Env, width: 'full' | 'auto' | number, align?: 'left' | 'center' | 'right'): string {
     this.generic(f, env);
     const name = parseNameTags(f.name);
     const href = this.hrefFor(f, env);
     if (f.opacity < 1) this.warn(`Layer opacity isn't supported on frames in email; “${name.clean}” is drawn fully opaque (its fill colour is blended).`, 'op:' + f.id);
     const { color: fill, gradient } = this.paintColor(f.fill, env.bg, f.opacity, name.clean);
-    const inner: Env = { bg: fill ?? env.bg, href, stacked: env.stacked };
+    const inner: Env = { ...env, bg: fill ?? env.bg, href };
 
     const attrs = [`role="presentation"`, `cellpadding="0"`, `cellspacing="0"`, `border="0"`];
     const style: string[] = [];
     const cls: string[] = [];
     if (width === 'full') attrs.push(`width="100%"`);
-    else {
+    else if (width !== 'auto') {
       attrs.push(`width="${r(width)}"`);
       style.push(`width:${r(width)}px`, 'max-width:100%');
       if (width >= 160) cls.push('es-full');
+    }
+    if (f.phoneFullWidth) {
+      cls.push('es-bleed');
+      this.usesEdge = true;
     }
     if (align && align !== 'left') attrs.push(`align="${align}"`);
     if (fill) {
@@ -344,21 +440,28 @@ class Compiler {
       const bottom = i === kids.length - 1 ? box.h - (b.y + b.h) : 0;
       const full = b.w >= innerW - 1;
       const align = full ? 'left' : f.alignItems === 'center' ? 'center' : f.alignItems === 'end' ? 'right' : 'left';
-      const place: Place = { pad: [r(top), r(pad.r), r(bottom), r(pad.l)], align, valign: 'top', classes: [], full, avail: innerW };
-      rows.push(`<tr>${this.cell(c, b, env, place)}</tr>`);
+      const { phone, restore } = this.phonePlace(c, [r(pad.l), r(pad.r)], env);
+      const place: Place = { pad: [r(top), r(pad.r), r(bottom), r(pad.l)], align, valign: 'top', classes: [], full, avail: innerW, phone };
+      rows.push(`<tr>${this.cell(c, b, { ...env, restore }, place)}</tr>`);
     });
     return rows.join('\n');
   }
 
-  shouldStack(f: FrameNode, kids: SceneNode[]): boolean {
-    const tags = parseNameTags(f.name).flags;
-    if (tags.has('nostack')) return false;
-    if (tags.has('stack')) return true;
-    if (kids.length < 2) return false;
-    return kids.some((c) => {
-      const b = this.layout.get(c.id);
-      return !!b && b.w >= 120 && (c.type === 'image' || c.type === 'frame' || c.type === 'ellipse');
-    });
+  shouldStack(f: FrameNode): boolean {
+    return rowStacksOnPhones(f, this.layout);
+  }
+
+  /**
+   * A frame that only hugs text (a column of hugging lines, like an address block). It compiles
+   * as a table that shrinks to its words instead of one cut to the canvas width, which a wider
+   * inbox font would overflow. Photos and rules are left out: they size against their cell.
+   */
+  hugsText(n: SceneNode): boolean {
+    if (n.type === 'text') return n.sizingH === 'hug' && !n.rotation;
+    if (n.type !== 'frame' || n.sizingH !== 'hug' || n.rotation || n.phoneFullWidth) return false;
+    if (n.layout === 'row') return this.isInlineRow(n);
+    const kids = n.children.filter((c) => c.visible);
+    return n.layout === 'column' && kids.length > 0 && !this.buttonParts(n) && !parseNameTags(n.name).flags.has('raster') && kids.every((c) => this.hugsText(c));
   }
 
   rowBody(f: FrameNode, box: Box, env: Env): string {
@@ -367,8 +470,14 @@ class Compiler {
     const innerW = Math.max(1, box.w - pad.l - pad.r);
     const innerH = Math.max(0, box.h - pad.t - pad.b);
     if (!kids.length) return `<tr><td height="${r(box.h)}" style="height:${r(box.h)}px;font-size:0;line-height:0">&nbsp;</td></tr>`;
-    const stack = this.shouldStack(f, kids);
-    const childEnv: Env = { ...env, stacked: env.stacked || stack };
+    const stack = this.shouldStack(f);
+    // A full-width picture can only reach the edges through a row that stacks; side by side, it
+    // fills its own cell. The row's padding sits on one td around every cell.
+    const rowPad: [number, number] = [r(pad.l), r(pad.r)];
+    const { phone: rowPhone, restore: rowRestore } = this.phonePlace(f, rowPad, env, stack);
+    const owed = rowPhone === 'edge' ? rowRestore! : ([0, 0] as [number, number]);
+    const cards = kids.filter((c) => c.type === 'frame' || c.type === 'image').length;
+    const childEnv: Env = { ...env, stacked: env.stacked || stack, restore: undefined, twoAcross: !stack && cards >= 2 ? f.id : env.twoAcross };
     const valign = f.alignItems === 'center' ? 'middle' : f.alignItems === 'end' ? 'bottom' : 'top';
     // The frame's own gap is a fixed px spacer; slack from justify (between / centre / end) is
     // flexible, so it can shrink on phones instead of pushing the row wider than the screen.
@@ -402,7 +511,12 @@ class Compiler {
       // Cross-axis fill frames: paint the td too, so the colour stretches with the row.
       let bgcolor: string | undefined;
       if (c.type === 'frame' && b.h >= innerH - 1) bgcolor = this.paintColor(c.fill, env.bg, c.opacity, c.name).color ?? undefined;
-      const singleLine = c.type === 'text' && c.sizingH === 'hug' && !c.text.includes('\n');
+      // Text that hugs its words never wraps on desktop, even when the inbox font runs wider than
+      // the canvas font. Stacked on phones, it gets the whole width and may wrap there.
+      const hugText = c.type === 'text' && c.sizingH === 'hug';
+      // Stacked cells on the way to a full-width picture pass the row's dropped padding down;
+      // the cells beside them take it back.
+      const cellPhone = rowPhone === 'edge' ? this.phonePlace(c, [0, 0], { ...env, restore: owed }) : {};
       const place: Place = {
         pad: [0, 0, 0, 0],
         align: 'left',
@@ -414,16 +528,41 @@ class Compiler {
         classes,
         full: true,
         avail: b.w,
-        nowrap: !stack && singleLine,
+        nowrap: hugText,
         stretch: c.sizingV === 'fill',
         bgcolor,
+        phone: cellPhone.phone === 'edge' ? undefined : cellPhone.phone,
       };
-      tds.push(this.cell(c, b, childEnv, place));
+      tds.push(this.cell(c, b, { ...childEnv, restore: cellPhone.restore }, place));
     });
     tds.push(spacer(box.w - pad.r - cursor, true));
     const row = `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%"><tr>\n${tds.filter(Boolean).join('\n')}\n</tr></table>`;
     const padStyle = [pad.t, pad.r, pad.b, pad.l].some((v) => v > 0) ? ` style="padding:${r(pad.t)}px ${r(pad.r)}px ${r(pad.b)}px ${r(pad.l)}px"` : '';
-    return `<tr><td${padStyle}>\n${row}\n</td></tr>`;
+    const padCls = this.phoneClasses(rowPhone, [r(pad.t), r(pad.r), r(pad.b), r(pad.l)]);
+    return `<tr><td${padCls.length ? ` class="${padCls.join(' ')}"` : ''}${padStyle}>\n${row}\n</td></tr>`;
+  }
+
+  /** Classes that change a cell's side padding on phones (see mobileCss). */
+  phoneClasses(phone: Place['phone'], pad: [number, number, number, number]): string[] {
+    if (!phone) return [];
+    if (phone === 'edge') {
+      if (!pad[1] && !pad[3]) return [];
+      this.usesEdge = true;
+      return ['es-edge'];
+    }
+    const out: string[] = [];
+    if (phone[0] || phone[1]) this.usesEdge = true;
+    if (phone[0]) {
+      const l = pad[3] + phone[0];
+      this.padClasses.l.add(l);
+      out.push(`es-pl${l}`);
+    }
+    if (phone[1]) {
+      const rr = pad[1] + phone[1];
+      this.padClasses.r.add(rr);
+      out.push(`es-pr${rr}`);
+    }
+    return out;
   }
 
   // ----- cells -----
@@ -435,7 +574,8 @@ class Compiler {
     if (place.align !== 'left') a.push(`align="${place.align}"`);
     a.push(`valign="${place.valign}"`);
     if (place.bgcolor) a.push(`bgcolor="${place.bgcolor}"`);
-    if (place.classes.length) a.push(`class="${place.classes.join(' ')}"`);
+    const classes = [...place.classes, ...this.phoneClasses(place.phone, place.pad)];
+    if (classes.length) a.push(`class="${classes.join(' ')}"`);
     a.push(...extraAttrs);
     const s: string[] = [];
     if (place.widthStyle) s.push(`width:${place.widthStyle}`);
@@ -469,15 +609,15 @@ class Compiler {
       return this.tdOpen(place) + this.img(this.addImage(n, b, env, true), b, env, place, this.hrefFor(n, env)) + '</td>';
     }
     if (this.isInlineRow(n)) return this.inlineRowCell(n, b, env, place);
-    const width = place.full ? 'full' : b.w;
+    const width = place.full ? 'full' : this.hugsText(n) ? 'auto' : b.w;
     return this.tdOpen(place) + this.frameTable(n, b, env, width, place.align) + '</td>';
   }
 
-  /** A row of one-line hugging texts on no background ("2 bed ✦ 1 bath", social links). */
+  /** A row of one-line hugging texts on no background ("2 bed ✦ 1 bath", social links), or one such text. */
   isInlineRow(f: FrameNode): boolean {
-    if (f.layout !== 'row' || f.justify === 'between' || f.fill || (f.stroke && f.strokeWidth > 0) || f.rotation) return false;
+    if (f.layout !== 'row' || f.justify === 'between' || f.fill || (f.stroke && f.strokeWidth > 0) || f.rotation || f.phoneFullWidth) return false;
     const kids = f.children.filter((c) => c.visible);
-    return kids.length > 1 && kids.every((c) => c.type === 'text' && c.sizingH === 'hug' && !c.text.includes('\n') && !c.rotation);
+    return kids.length > 0 && kids.every((c) => c.type === 'text' && c.sizingH === 'hug' && !c.text.includes('\n') && !c.rotation);
   }
 
   /**
@@ -511,7 +651,7 @@ class Compiler {
     const pad: [number, number, number, number] = [place.pad[0] + r(p.t), place.pad[1] + r(p.r), place.pad[2] + r(p.b), place.pad[3] + r(p.l)];
     const align = place.full ? (f.justify === 'center' ? 'center' : f.justify === 'end' ? 'right' : 'left') : place.align;
     if (align !== 'left') base.push(`text-align:${align}`);
-    return this.tdOpen({ ...place, pad, align, nowrap: false }, base) + pieces.join(sep) + '</td>';
+    return this.tdOpen({ ...place, pad, align, nowrap: false }, base, this.textAttrs(f.id, env)) + pieces.join(sep) + '</td>';
   }
 
   textStyle(t: TextNode, env: Env): string[] {
@@ -559,13 +699,28 @@ class Compiler {
     }
     const lineH = t.fontSize * t.lineHeight;
     const multiLine = b.h > lineH * 1.5;
+    const attrs = this.textAttrs(t.id, env);
+    if (!place.full && t.sizingH === 'hug') {
+      // Hugging its words: its lines are its own, so it gets the whole cell instead of a column cut
+      // to the canvas width (a wider inbox font would break "1050 Post St" in two there).
+      const textAlign = t.align === 'left' || t.align === 'justify' ? place.align : t.align;
+      if (multiLine && textAlign !== place.align) {
+        // Lines centred on each other inside a block that sits left (or right): a table that
+        // shrinks to the words keeps both.
+        const tbl = `<table role="presentation" cellpadding="0" cellspacing="0" border="0"${place.align !== 'left' ? ` align="${place.align}"` : ''}><tr><td ${attrs.length ? attrs.join(' ') + ' ' : ''}style="${style.join(';')}">${content}</td></tr></table>`;
+        return this.tdOpen(place) + tbl + '</td>';
+      }
+      const s = style.filter((x) => !x.startsWith('text-align'));
+      if (textAlign !== 'left') s.push(`text-align:${textAlign}`);
+      return this.tdOpen(place, s, attrs) + content + '</td>';
+    }
     if (!place.full && multiLine) {
       // Narrower than its column and wrapping: pin its width so it wraps like the canvas.
       const w = r(b.w);
-      const tbl = `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="${w}"${place.align !== 'left' ? ` align="${place.align}"` : ''} style="width:${w}px;max-width:100%"><tr><td style="${style.join(';')}">${content}</td></tr></table>`;
+      const tbl = `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="${w}"${place.align !== 'left' ? ` align="${place.align}"` : ''} style="width:${w}px;max-width:100%"><tr><td ${attrs.length ? attrs.join(' ') + ' ' : ''}style="${style.join(';')}">${content}</td></tr></table>`;
       return this.tdOpen(place) + tbl + '</td>';
     }
-    return this.tdOpen(place, style) + content + '</td>';
+    return this.tdOpen(place, style, attrs) + content + '</td>';
   }
 
   rectCell(n: ShapeNode, b: Box, env: Env, place: Place): string {
@@ -629,12 +784,14 @@ class Compiler {
   img(im: EmailImage, b: Box, env: Env, place: Place, href: string | null): string {
     const url = this.opts.imageUrl(im.nodeId, im.fileName);
     const margin = place.align === 'center' ? ';margin:0 auto' : place.align === 'right' ? ';margin:0 0 0 auto' : '';
-    const cls = im.width >= 160 ? ' class="es-img"' : '';
+    const edge = this.edgeNodes.has(im.nodeId);
+    if (edge) this.usesEdge = true;
+    const cls = edge ? ' class="es-img es-bleed"' : im.width >= 160 ? ' class="es-img"' : '';
     // With images off the alt text takes this type, so it stays readable on dark sections.
     const ink = altInk(env.bg);
     const altType = `font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;color:${ink}`;
     let tag = this.opts.imagesOff
-      ? `<div style="box-sizing:border-box;display:flex;align-items:center;justify-content:center;width:100%;max-width:${im.width}px;aspect-ratio:${im.width}/${Math.max(1, im.height)};overflow:hidden;padding:4px;text-align:center;border:1px dashed ${flatten(ink + '66', env.bg)};${altType}${margin}">${escapeHtml(im.alt)}</div>`
+      ? `<div${edge ? ' class="es-bleed"' : ''} style="box-sizing:border-box;display:flex;align-items:center;justify-content:center;width:100%;max-width:${im.width}px;aspect-ratio:${im.width}/${Math.max(1, im.height)};overflow:hidden;padding:4px;text-align:center;border:1px dashed ${flatten(ink + '66', env.bg)};${altType}${margin}">${escapeHtml(im.alt)}</div>`
       : `<img src="${escAttr(url)}" width="${im.width}" height="${im.height}" alt="${escapeHtml(im.alt)}"${cls} style="display:block;width:100%;max-width:${im.width}px;height:auto;border:0;outline:none;text-decoration:none;${altType}${margin}">`;
     if (href) {
       this.noteHref(href, im.alt);
@@ -723,14 +880,25 @@ function mobileCss(c: Compiler, bp: number): string {
     .sort((a, b) => a - b)
     .map((g) => `.es-gt${g}{padding-top:${g}px!important}`)
     .join('');
+  const sides = (side: 'l' | 'r') =>
+    [...c.padClasses[side]]
+      .sort((a, b) => a - b)
+      .map((v) => `.es-p${side}${v}{padding-${side === 'l' ? 'left' : 'right'}:${v}px!important}`)
+      .join('');
+  // Full width on phones: the cells on the way drop their side padding (es-edge), the cells
+  // beside them take it back (es-pl / es-pr), and the picture fills what's left (es-bleed).
+  const edge = c.usesEdge
+    ? `.es-edge{padding-left:0!important;padding-right:0!important}` + sides('l') + sides('r') + `.es-bleed{width:100%!important;max-width:100%!important;height:auto!important}`
+    : '';
   return (
     `@media only screen and (max-width:${bp}px){` +
     `.es-wrap{width:100%!important;max-width:100%!important}` +
-    `.es-col{display:block!important;width:100%!important;max-width:100%!important;box-sizing:border-box!important}` +
+    `.es-col{display:block!important;width:100%!important;max-width:100%!important;box-sizing:border-box!important;white-space:normal!important}` +
     `.es-spc{display:none!important;width:0!important;max-width:0!important;overflow:hidden!important}` +
     gaps +
     `.es-col .es-full{width:100%!important}` +
     `.es-img{width:100%!important;height:auto!important}` +
+    edge +
     `}`
   );
 }
@@ -756,6 +924,7 @@ export function buildEmailHtml(root: FrameNode | SceneNode[], layout: LayoutMap,
   const rootFill = rootFrame?.fill?.kind === 'solid' ? flatten(rootFrame.fill.color, '#FFFFFF') : rootFrame?.fill?.kind === 'linear' || rootFrame?.fill?.kind === 'radial' ? flatten(rootFrame.fill.from, '#FFFFFF') : rootFrame?.fill?.kind === 'mesh' ? flatten(rootFrame.fill.points[0].color, '#FFFFFF') : null;
   const bodyBg = flatten(opts.bodyBackground ?? rootFill ?? '#FFFFFF', '#FFFFFF');
   const env: Env = { bg: bodyBg, href: null, stacked: false };
+  c.markBleed(tops);
 
   if (width > 640) c.warn(`The email is ${width}px wide. Keep it at 600px; wider emails get scaled down or scroll sideways in many clients.`);
   if (!tops.length) c.warn('Nothing to export: the email is empty.');
@@ -848,7 +1017,7 @@ export function buildEmailHtml(root: FrameNode | SceneNode[], layout: LayoutMap,
   }
   const bytes = new TextEncoder().encode(html).length;
   if (bytes > GMAIL_CLIP_BYTES) c.warn(`The HTML is ${(bytes / 1024).toFixed(1)} KB. Gmail clips emails over about 102 KB, hiding the footer and unsubscribe link. Cut a section or simplify.`);
-  return { html, images: c.images, warnings: c.warnings, placeholders: tokens, bytes, fonts: [...c.fonts] };
+  return { html, images: c.images, warnings: c.warnings, placeholders: tokens, bytes, fonts: [...c.fonts], twoAcross: c.twoAcross };
 }
 
 /** The pictures an email will reference (same names buildEmailHtml would give them). */
