@@ -68,6 +68,19 @@ export interface HostingStatus {
 }
 export type HostingAnswer<T> = ({ ok: true } & T) | { ok: false; error: string };
 
+/** What one address answered. width/height: a picture's size as shown; html: a page's source. */
+export interface LiveCheckAnswer {
+  status: number;
+  type: string;
+  finalUrl: string;
+  redirected: boolean;
+  bytes?: number;
+  width?: number;
+  height?: number;
+  html?: string;
+  title?: string;
+}
+
 export interface ProjectRecord {
   path: string;
   folderId: string | null;
@@ -159,6 +172,8 @@ export interface SpreadNative {
   chatAnswer(opts: { key: string; requestId: string; answers: Record<string, string> | null }): Promise<void>;
   chatLogin(): Promise<{ ok: boolean; error?: string }>;
   chatDesignDocs(dir: string): Promise<string[]>;
+  /** Loads one picture or link from an email for the send checklist's live check (electron/livecheck.cjs). */
+  liveCheckUrl(opts: { url: string; kind: 'image' | 'page' }): Promise<HostingAnswer<LiveCheckAnswer>>;
   onChatUpdate(cb: (u: ChatState) => void): () => void;
   pathForFile(file: File): string;
   onOpenPath(cb: (path: string) => void): () => void;

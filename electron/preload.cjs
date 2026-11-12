@@ -61,6 +61,7 @@ contextBridge.exposeInMainWorld('spreadNative', {
   chatAnswer: (opts) => ipcRenderer.invoke('chat-answer', opts),
   chatLogin: () => ipcRenderer.invoke('chat-login'),
   chatDesignDocs: (dir) => ipcRenderer.invoke('chat-design-docs', dir),
+  liveCheckUrl: (opts) => ipcRenderer.invoke('live-check-url', opts),
   onChatUpdate: (cb) => {
     const listener = (_e, u) => cb(u);
     ipcRenderer.on('chat-update', listener);

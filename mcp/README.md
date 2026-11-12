@@ -94,7 +94,7 @@ Rows are lettered A, B, C… by position. The user picks a row with Ctrl+Enter a
 | `spread_history` | Who changed what and when, filtered by board, layer, person or words |
 | `spread_set_overlay` | Lay a past design over a board to compare: a picture, an email's HTML, another board or a saved reference |
 | `spread_compare_overlay` | Measure a board against its reference: pixels changed, where, which layers, and what moved up or down |
-| `spread_send_check` | Subject, unsubscribe, address, links and alt text: is this email ready to send? |
+| `spread_send_check` | Subject, unsubscribe, address, links and alt text: is this email ready to send? With `live: true`, also loads every picture and link and checks listing cards against their pages. |
 | `spread_preview_email` | See the real HTML as inboxes show it: desktop, phone, fallback fonts, images off, with checks and pictures |
 | `spread_export_email` | Write images (named with a content hash) plus `email.html` to a folder; re-export with `baseUrl` once the images are hosted (saved on the board). `platform: 'rentcafe'` returns the HTML with paste steps |
 
