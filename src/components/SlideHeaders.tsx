@@ -9,6 +9,7 @@ import { emailRootOf } from '../email/boards';
 import type { Doc } from '../types';
 import { isElectron } from '../platform';
 import { askSaveToLibrary } from './LibraryDialogs';
+import { openListingCards } from './ListingCardsDialog';
 
 // HTML chrome around every board on the canvas: a quiet header row (row letter, name, note,
 // pick / reject, one actions menu) and, for carousels, slide numbers under the slides plus an
@@ -168,7 +169,13 @@ function BoardChrome({
     { label: 'Zoom to row', kbd: 'Shift+3', fn: zoomTo },
     ...(board.kind === 'carousel' ? [{ label: 'Preview', fn: () => (activate(), s().set({ modal: 'preview' })) }] : []),
     { label: 'Duplicate as variation', kbd: `${MOD}+Alt+D`, fn: () => s().duplicateBoard(board.id) },
-    ...(isElectron ? [{ label: 'Copy to another project…', fn: () => openSwitcher(board.id) }] : []),
+    ...(isElectron
+      ? [
+          // The only row can't leave: a project always keeps one.
+          { label: 'Move to project…', fn: () => openSwitcher({ boardId: board.id, move: true }), disabled: count < 2 },
+          { label: 'Copy to project…', fn: () => openSwitcher({ boardId: board.id, move: false }) },
+        ]
+      : []),
     null,
     { label: 'Rename', fn: () => setEditing('name') },
     { label: board.note ? 'Edit note' : 'Add note', fn: () => setEditing('note') },
@@ -181,7 +188,9 @@ function BoardChrome({
           null,
         ]
       : []),
+    ...(isEmail ? [{ label: 'Fill cards from listing links…', fn: () => openListingCards(board.id) }] : []),
     { label: 'Export this row…', fn: () => (activate(), s().set({ modal: 'export' })) },
+    ...(board.kind === 'email' && isElectron ? [{ label: 'Save as PDF…', fn: () => (activate(), s().set({ modal: 'pdf' })) }] : []),
     ...(isElectron
       ? [
           { label: 'Save as template…', fn: () => askSaveToLibrary({ kind: 'template', boardId: board.id, name: board.name }) },

@@ -159,10 +159,10 @@ const COLORS = `COLORS: '#RRGGBB' or '#RRGGBBAA'. Text 'fill' is a color string.
 
 const NODE_SPEC = `NODE SPEC fields (all optional except type):
 - common: key (stable role name, see KEYS), name, link (email boards: the URL this layer and everything inside it goes to; null removes it), x, y, w, h, rotation (deg), opacity (0–1), visible, locked, sizingH/sizingV ('fixed'|'hug'|'fill'; 'fill' only inside auto layout; 'hug' for text and auto layout frames), shadow {enabled, color, x, y, blur}.
-- text: text (use \\n for line breaks), fontFamily (call spread_list_fonts; bundled: 'Inter Variable', 'DM Sans Variable', 'Space Grotesk Variable', 'Archivo Variable', 'Playfair Display Variable', 'Fraunces Variable', 'DM Serif Display', 'Instrument Serif', 'Bebas Neue'), fontWeight (100–900; default 600, so always set it for body copy), italic, fontSize (px), lineHeight (multiplier, e.g. 1.1), letterSpacing (percent of size, Figma-style, e.g. -2), align ('left'|'center'|'right'|'justify'), fill (color), uppercase, decoration ('none'|'underline'|'line-through'). Text hugs its content by default; set sizingH:'fixed' and w to wrap at a width. textStyle: a style's name (see spread_list_styles) sets its font, weight, size, line height, letter spacing and case, and the layer follows later changes to it; values passed beside it stay as that layer's own; null unlinks. Color and alignment are never part of a style. spans: style part of the text, like one bold word in a sentence: [{ match: 'Resident Services', fontWeight: 700 }] (match = a piece of the text, first occurrence; all: true for every one), or [{ start, end, ... }] offsets. Each span sets any of fontWeight, italic, fill, decoration; the rest comes from the layer. Spans follow the words when the text changes; pass spans: null to clear them. Use this instead of splitting a sentence into several text layers.
-- image: assetId (from spread_get_state photos / spread_import_photos; null = empty placeholder), fit ('fill' crops to cover | 'fit'), crop {zoom ≥1, cx, cy} (focal point 0–1), radius, flipX, flipY, adjust {brightness, contrast, saturation} (each -1..1), effects (array, run in order, non-destructive, omitted fields use defaults): [{ type:'dither', pattern 'ordered'|'diffusion'|'noise', size (cell in layer px, 1-24), levels (2-8), mode 'duotone'|'photo', ink, paper, enabled, name }, { type:'grain', amount 0-1, size (1-8), enabled, name }, { type:'blur', mode 'even'|'progressive', amount (radius in layer px, 1-120), direction 'top'|'bottom'|'left'|'right' (side the blur grows towards), start 0-0.9 (how much stays sharp), enabled, name }]. Send the whole array when changing it, stroke, strokeWidth.
+- text: text (use \\n for line breaks), fontFamily (call spread_list_fonts; bundled: 'Inter Variable', 'DM Sans Variable', 'Space Grotesk Variable', 'Archivo Variable', 'Playfair Display Variable', 'Fraunces Variable', 'DM Serif Display', 'Instrument Serif', 'Bebas Neue'), fontWeight (100–900; default 600, so always set it for body copy; on email boards new text starts as Arial 16px regular, which every inbox has), italic, fontSize (px), lineHeight (multiplier, e.g. 1.1), letterSpacing (percent of size, Figma-style, e.g. -2), align ('left'|'center'|'right'|'justify'), fill (color), uppercase, decoration ('none'|'underline'|'line-through'). Text hugs its content by default; set sizingH:'fixed' and w to wrap at a width. textStyle: a style's name (see spread_list_styles) sets its font, weight, size, line height, letter spacing and case, and the layer follows later changes to it; values passed beside it stay as that layer's own; null unlinks. Color and alignment are never part of a style. spans: style part of the text, like one bold word in a sentence: [{ match: 'Resident Services', fontWeight: 700 }] (match = a piece of the text, first occurrence; all: true for every one), or [{ start, end, ... }] offsets. Each span sets any of fontWeight, italic, fill, decoration; the rest comes from the layer. Spans follow the words when the text changes; pass spans: null to clear them. Use this instead of splitting a sentence into several text layers.
+- image: assetId (from spread_get_state photos / spread_import_photos; null = empty placeholder), fit ('fill' crops to cover | 'fit'), crop {zoom ≥1, cx, cy} (focal point 0–1), radius, flipX, flipY, adjust {brightness, contrast, saturation} (each -1..1), phoneFullWidth (email boards: true = spans the phone screen edge to edge, whatever the padding around it; desktop unchanged), effects (array, run in order, non-destructive, omitted fields use defaults): [{ type:'dither', pattern 'ordered'|'diffusion'|'noise', size (cell in layer px, 1-24), levels (2-8), mode 'duotone'|'photo', ink, paper, enabled, name }, { type:'grain', amount 0-1, size (1-8), enabled, name }, { type:'blur', mode 'even'|'progressive', amount (radius in layer px, 1-120), direction 'top'|'bottom'|'left'|'right' (side the blur grows towards), start 0-0.9 (how much stays sharp), enabled, name }]. Send the whole array when changing it, stroke, strokeWidth.
 - rect / ellipse: fill (Paint), stroke, strokeWidth, radius, backdropBlur (blurs what's behind it, layer px 0-120; needs a see-through fill, e.g. '#FFFFFF33').
-- frame: space ({ gap, padding, paddingX, paddingY } naming spacing tokens; sets those values and follows later changes to the token; null unlinks), fill (Paint|null; default null, so a frame is see-through until you give it one), radius, clip, stroke, strokeWidth, backdropBlur, layout ('none'|'row'|'column' = auto layout), gap (default 0), padding (number, {x,y} or {t,r,b,l}; default 0), alignItems ('start'|'center'|'end'), justify ('start'|'center'|'end'|'between'), children (NodeSpec[]).`;
+- frame: space ({ gap, padding, paddingX, paddingY } naming spacing tokens; sets those values and follows later changes to the token; null unlinks), fill (Paint|null; default null, so a frame is see-through until you give it one), radius, clip, stroke, strokeWidth, backdropBlur, layout ('none'|'row'|'column' = auto layout), gap (default 0), padding (number, {x,y} or {t,r,b,l}; default 0), alignItems ('start'|'center'|'end'), justify ('start'|'center'|'end'|'between'), children (NodeSpec[]). Email boards only: phoneStack on a row ('stack' | 'side-by-side'; null = automatic: rows of photos or cards stack), phoneFullWidth (as for images).`;
 
 const KEYS = `KEYS: any node may carry key (a stable role name). Unlike ids, keys survive board duplication, so the same layer has the same key on every variation row. Give important layers keys like headline, subhead, address, price, cta, scrim-1, photo-1… so you can restyle the same layer across rows in one call (spread_make_variants changes, update/delete by key).`;
 
@@ -184,6 +184,7 @@ const server = new McpServer(
     instructions: `Spread is the user's local design canvas (a Figma replacement): carousels, emails, and pages of any size (resumes, posters, slides, banners). These tools drive the running desktop app live — the user sees every change on their canvas and can tweak by hand afterwards. You design and iterate; the user directs and makes the final call.
 STYLES: a project can have named text styles and spacing tokens (get_state lists them as styles). When it does, set textStyle on text and space on auto layout frames instead of raw values, and to change a type or spacing decision change the style once with spread_save_styles rather than editing layers.
 BRAND: every project uses one brand kit or none (get_state/get_feedback report it). With a brand, call spread_get_brand and design with only its fonts, colors, type scale, spacing and rules; spread_lint flags anything off-brand. With none (a personal project), use no brand's assets. Never switch a project's brand unless the user asks.
+PROJECTS: board tools act on ONE project, the open one; get_state, list_boards and get_feedback name it in project. When the user means a different project, spread_list_projects (ids, names, which is active) → spread_open_project {project: id or name} BEFORE building; it waits until that project is loaded and returns it, and your later calls stay there. To put a row in another project, use spread_move_board (or copy: true) rather than rebuilding it by hand.
 FEWER CALLS: chain steps with spread_batch (e.g. update_nodes → lint → render_slides in one call). Each call may cost the user a permission click.
 NEW WORK: act as the user's senior designer and marketing lead. Call spread_guide('director') first and run its brief: one round of questions with options (how many directions, which territory), a strategy line, and direction concepts the user approves before you build. Skip the questions only when the brief is already complete or the user says "just make it".
 BEFORE DESIGNING ANYTHING, call spread_guide with the medium (document = any page-based work, carousel, eblast) and follow it: it is the workflow and the quality bar (setup, the lint Floor, the Bar, directions, export). If a guide is already loaded as a skill, you don't need to call it.
@@ -400,6 +401,23 @@ tool(
 );
 
 tool(
+  'spread_fill_listing_cards',
+  {
+    title: 'Fill listing cards from listing links',
+    description:
+      "Fills the listing cards on an email board (active, or boardId) from listing page links alone, e.g. rentbt.com/listing/… pages. Spread reads each page (address, unit, price, beds, baths, neighborhood, photos), sorts them (sort 'price' = cheapest first, the default; 'as-given' keeps your order) and fills the cards in order: price, 'Address Unit N' (Street/Avenue dropped, like the user's cards), 'Neighborhood | N BD | N BA' (keeping the card's own separator), a link to the listing on the card and its photo, and the first listing photo cropped by the photo host to the frame's exact size at 2x. That cropped URL becomes the picture's own web address (email.imageUrls), so nothing is uploaded, and the same file goes in the photo tray so the canvas matches. Cards are a repeat whose fields are named like price, address, details/meta, photo, link, or layers keyed unit-1-price, unit-1-address, unit-1-meta, unit-1-photo (unit-2-…). More links than cards adds cards; fewer leaves the extra cards as they were and lists them. A fact the page doesn't have becomes a {{TOKEN}} (or an empty photo) so export catches it. One undo step. preview: true reads the links and returns what it found without changing the board. Returns { cards: [{ card, url, price, address, details, photo, problems }], added, extras, failed, summary }. Tell the user about every problem and failed link.",
+    inputSchema: {
+      boardId,
+      urls: z.array(z.string()).min(1).describe('Listing page links, one per card.'),
+      sort: z.enum(['price', 'as-given']).optional().describe("'price' (default): cheapest first. 'as-given': the order of urls."),
+      preview: z.boolean().optional().describe('Only read the links and report what each page says.'),
+    },
+    annotations: { openWorldHint: true }, // reads listing pages and photos from the web
+  },
+  passthrough('fill_listing_cards', 180_000),
+);
+
+tool(
   'spread_wrap_nodes',
   {
     title: 'Wrap layers in a frame',
@@ -493,7 +511,7 @@ tool(
   'spread_update_board',
   {
     title: 'Rename board / edit note / set status',
-    description: "Sets a board's name, note, status, and for email boards the subject, preheader and link tracking (boardId, default the active board). Update the note whenever you change a variation's direction so it still describes what the row shows. status: 'picked' | 'rejected' | null. The user normally sets status (Ctrl+Enter / Ctrl+Backspace); set it yourself only when they tell you to (\"go with C\" → picked). Returns { boards }.",
+    description: "Sets a board's name, note, status, and for email boards the subject, preheader, link tracking, pictures' own web addresses (imageUrls) and the sending tool (platform) (boardId, default the active board). Update the note whenever you change a variation's direction so it still describes what the row shows. status: 'picked' | 'rejected' | null. The user normally sets status (Ctrl+Enter / Ctrl+Backspace); set it yourself only when they tell you to (\"go with C\" → picked). Returns { boards }.",
     inputSchema: {
       boardId,
       name: z.string().optional(),
@@ -503,6 +521,8 @@ tool(
       subject: z.string().optional().describe('Email boards: the subject line (under ~60 characters; also the HTML title).'),
       preheader: z.string().optional().describe('Email boards: the inbox preview text after the subject (40–90 characters, not repeating the subject).'),
       tracking: z.string().optional().describe('Email boards: tags added to every web link at export, e.g. "utm_source=newsletter&utm_campaign=october". Layers keep their plain URLs; tags a URL already has, mailto:, tel:, placeholders and unsubscribe links are left alone. "" clears it.'),
+      imageUrls: z.record(z.string().nullable()).optional().describe("Email boards: pictures' own web addresses, { nodeId: 'https://…' }, merged into the saved ones (\"\" or null clears one). They win over the board's picture hosting, and those pictures aren't rendered, uploaded or written to the export folder. Must be full public https addresses (not Drive/Dropbox share links). The user sets the same thing in the right panel's Web address field."),
+      platform: z.enum(['rentcafe', 'other']).nullable().optional().describe("Email boards: the tool that sends it. 'rentcafe': RentCafe adds the unsubscribe link and mailing address (the send check stops flagging them) and the Export window offers Copy for RentCafe. null clears it."),
     },
   },
   passthrough('update_board'),
@@ -667,7 +687,7 @@ tool(
   'spread_update_nodes',
   {
     title: 'Update layers',
-    description: `Patches existing layers on one board (active, or boardId — ids are per board): updates = [{ id | key, ...props }]. A key patches every layer with that key on the board. Any NODE SPEC prop can be patched (x, y, w, h, text, fontSize, fill, crop, adjust, layout, ...). Nested objects (padding, crop, adjust, shadow, fill) are replaced wholesale — send the full object. Setting w/h on a 'hug' axis has no effect until you set sizingH/sizingV to 'fixed'. Returns { updated, missing (refs that matched nothing) }. One call = one undo step for the user.
+    description: `Patches existing layers on one board (active, or boardId — ids are per board): updates = [{ id | key, ...props }]. A key patches every layer with that key on the board. Any NODE SPEC prop can be patched (x, y, w, h, text, fontSize, fill, crop, adjust, layout, ...). Nested objects (padding, crop, adjust, shadow, fill) are replaced wholesale — send the full object. Setting w/h on a 'hug' axis has no effect until you set sizingH/sizingV to 'fixed'. Email phone layout: { id, phoneStack: 'stack' | 'side-by-side' | null } on a row, { id, phoneFullWidth: true } on a photo or a frame holding one. Returns { updated, missing (refs that matched nothing) }. One call = one undo step for the user.
 ${KEYS}
 ${COORDS}
 ${COLORS}`,
@@ -822,11 +842,13 @@ tool(
 // Email boards (e-blasts)
 // ---------------------------------------------------------------------------
 
-const EMAIL = `EMAIL BOARDS: kind 'email', 600px wide, height grows with content. One root auto-layout column frame whose children are sections (frames named "Section / …"). Edit with the normal node tools (spread_update_nodes by id/key; spread_add_nodes with parentId = a section or the root). Facts in template copy are {{TOKENS}} — replace every one with real values (export warns about leftovers). For grids of similar cards (listings, events), build one card and fill the rest with spread_repeat. Name repeated type (Body, Section heading) with spread_save_styles so one change reaches every layer. Set a layer's link with the link prop on spread_add_nodes / spread_update_nodes, and check them all with spread_list_links. Tracking tags for every link go on the board (spread_update_board tracking). Older [link:URL] name tags still work; setting link replaces them. Layer-name tags the compiler reads: [alt:…] (image alt text), [button], [stack]/[nostack] (row frames stack on phones or not), [raster] (flatten to a picture). Images must be on public URLs. The board remembers where (the user sets it in the Links panel; spread_list_links shows it): export with host: 'wordpress' when that's the choice and WordPress is connected (Spread uploads them and fills in the URLs); a saved folder URL or per-picture URLs are used automatically; otherwise export once, the user uploads the image folder, then re-export with baseUrl. The board carries the subject and preview text (spread_update_board subject/preheader); export uses them. spread_render_slides shows the canvas; spread_preview_email shows the real HTML on desktop and phone, with fallback fonts and with images off, so run it before export. To match a past email, lay it over the board with spread_set_overlay and measure with spread_compare_overlay instead of writing your own scripts.`;
+const EMAIL = `EMAIL BOARDS: kind 'email', 600px wide, height grows with content. One root auto-layout column frame whose children are sections (frames named "Section / …"). Edit with the normal node tools (spread_update_nodes by id/key; spread_add_nodes with parentId = a section or the root). Facts in template copy are {{TOKENS}} — replace every one with real values (export warns about leftovers). For grids of similar cards (listings, events), build one card and fill the rest with spread_repeat. Name repeated type (Body, Section heading) with spread_save_styles so one change reaches every layer. Set a layer's link with the link prop on spread_add_nodes / spread_update_nodes, and check them all with spread_list_links. Tracking tags for every link go on the board (spread_update_board tracking). Older [link:URL] name tags still work; setting link replaces them. Phone layout is on the layers: phoneStack on a row ('stack' | 'side-by-side'; unset = rows of photos or cards stack) and phoneFullWidth on a photo (edge to edge on phones). Text inside a card should hug or fill, never a narrow fixed width (spread_lint flags narrow-text). Layer-name tags the compiler reads: [alt:…] (image alt text), [button], [raster] (flatten to a picture); older [stack]/[nostack] tags still work, but phoneStack wins. Images must be on public URLs. The board remembers where (the user sets it in the Links panel; spread_list_links shows it): export with host: 'wordpress' when that's the choice and WordPress is connected (Spread uploads them and fills in the URLs); a saved folder URL or per-picture URLs are used automatically; otherwise export once, the user uploads the image folder, then re-export with baseUrl (saved on the board from then on). A picture that's already online (a listing photo) gets its own address with spread_update_board imageUrls and is left out of the export. HTML is only handed out when every picture has a full web address. For RentCafe, set platform: 'rentcafe' (spread_update_board) once. The board carries the subject and preview text (spread_update_board subject/preheader); export uses them. spread_render_slides shows the canvas; spread_preview_email shows the real HTML on desktop and phone, with fallback fonts and with images off, so run it before export. To match a past email, lay it over the board with spread_set_overlay and measure with spread_compare_overlay instead of writing your own scripts.`;
 
 const emailOpts = {
-  baseUrl: z.string().optional().describe('Public folder URL the exported images will live at; image src = baseUrl + file name.'),
-  urls: z.record(z.string()).optional().describe('Per-image URL overrides: { nodeId: url }.'),
+  baseUrl: z.string().optional().describe("Public https folder URL the exported pictures are uploaded to; src = baseUrl + exported file name. Saved on the board (picture hosting 'One folder URL'), so later exports, Copy HTML and the Export window use it too."),
+  urls: z.record(z.string()).optional().describe("Pictures' own web addresses: { nodeId: 'https://…' } (\"\" clears one). Saved on the board (email.imageUrls); they win over any hosting and those pictures aren't rendered, uploaded or written out. Use for pictures already online, e.g. listing photos."),
+  allowRelative: z.boolean().optional().describe('Return/write the HTML even when some pictures have no full web address (their src stays a bare file name). Only for a local draft preview; never paste that HTML into a sending tool.'),
+  platform: z.enum(['rentcafe', 'other']).optional().describe("The tool that sends it, saved on the board (email.platform). 'rentcafe': RentCafe adds the unsubscribe link and mailing address, so those aren't flagged, and spread_export_email returns the final HTML with paste steps."),
   title: z.string().optional().describe("HTML <title> (default: the board's subject, else its name)."),
   preheader: z.string().optional().describe("Inbox preview text after the subject, 40–90 chars (default: the board's preheader)."),
   links: z.record(z.string()).optional().describe("Link overrides for this export only: { nodeId: href } (otherwise each layer's own link)."),
@@ -879,19 +901,19 @@ tool(
   'spread_email_html',
   {
     title: 'Compile email HTML (check)',
-    description: 'Compiles an email board (active, or boardId) to inbox-safe HTML without writing files, so you can check it. Returns { bytes, warnings, images: [{ nodeId, fileName, alt, width, height }], html (truncated at maxChars, default 60000) }. Fix every warning you can (unfilled {{TOKENS}}, missing alt text, links to "#", no unsubscribe) and keep bytes under ~100 KB (Gmail clips at 102 KB). Read-only.',
-    inputSchema: { ...emailOpts, maxChars: z.number().int().optional(), boardId },
+    description: "Compiles an email board (active, or boardId) to inbox-safe HTML without writing files, so you can check it. Returns { ready, notReady?, missingAddresses?: [{ nodeId, fileName, name }], bytes, warnings, placeholders, images: [{ nodeId, fileName (exported name, with a short content hash), src (its web address, or null), alt, width, height }], platform, html }. ready means every picture has a full web address; otherwise html is null and notReady says how to fix it (pass allowRelative: true for a draft with bare file names, for reading only). With a saved folder URL the pictures are rendered to work out their names (pass the same scale you'll export with). baseUrl, urls and platform given here are saved on the board. Fix every warning you can (unfilled {{TOKENS}}, missing alt text, links to \"#\", no unsubscribe) and keep bytes under ~100 KB (Gmail clips at 102 KB).",
+    inputSchema: { ...emailOpts, scale: z.number().min(1).max(3).optional(), maxChars: z.number().int().optional(), boardId },
     annotations: { readOnlyHint: true },
   },
-  passthrough('email_html'),
+  passthrough('email_html', 300_000),
 );
 
 tool(
   'spread_send_check',
   {
     title: 'Check an email is ready to send',
-    description: "The five things that must be right before an email goes out, the same list the user sees pinned in the app: subject (and preview text), unsubscribe, mailing address, links and alt text. Returns { ready, toFix, checks: [{ id, level: 'ok'|'note'|'fix', title, detail, ids }] }, where ids are the layers each check is about. ready means nothing is at 'fix'. The address check reads the footer, or a layer named 'Mailing address'. Read-only.",
-    inputSchema: { boardId },
+    description: "The five things that must be right before an email goes out, the same list the user sees pinned in the app: subject (and preview text), unsubscribe, mailing address, links and alt text. Returns { ready, toFix, checks: [{ id, level: 'ok'|'note'|'fix', title, detail, ids }] }, where ids are the layers each check is about. ready means nothing is at 'fix'. The address check reads the footer, or a layer named 'Mailing address'. live: true also runs the Live check the user can run from the checklist (desktop app only, takes a few seconds): loads every picture address in the compiled email (must answer 200 with an image), opens every web link, compares each listing card's unit and street numbers with its linked page (flags only real conflicts, e.g. card says Unit 403, page says Unit 203), and flags photos cut down a lot by their frame or hosted at a different shape than their frame. Adds live: { ready, summary: { pictures, links, shapes }, counts, problems: [{ group: 'pictures'|'links'|'shapes', level: 'note'|'fix', nodeId, name, title, url? }] }, and its 'fix' problems count toward toFix. Run it right before export or send, not after every edit. Read-only.",
+    inputSchema: { boardId, live: z.boolean().optional().describe('Also load every picture and link and compare listing cards with their pages (a few seconds).') },
     annotations: { readOnlyHint: true },
   },
   passthrough('send_check'),
@@ -926,8 +948,8 @@ tool(
   'spread_export_email',
   {
     title: 'Export email (HTML + images)',
-    description: "Writes email.html plus the rendered images (at scale, default 2x) for an email board (active, or boardId) into folder (default ~/Pictures/Spread/<name>-email-<date>). host: 'wordpress' first uploads the images to the user's connected WordPress media library (unchanged images are reused, never re-uploaded) and writes their URLs into the HTML; it fails with a clear message if WordPress isn't connected (the user connects it once in Export → Upload to WordPress). Returns { folder, htmlFile, images, bytes, warnings, subject, preheader, hosted?, note }. Without host/baseUrl/urls, image src are bare file names: ask the user to connect WordPress, or to upload the files and give you the base URL, then export again.",
-    inputSchema: { ...emailOpts, host: z.enum(['wordpress']).optional().describe("Upload the images to the connected WordPress site and use their URLs."), folder: z.string().optional(), scale: z.number().min(1).max(3).optional(), boardId },
+    description: "Writes the rendered pictures (at scale, default 2x) and email.html for an email board (active, or boardId) into folder (default ~/Pictures/Spread/<name>-email-<date>). Picture file names carry a short hash of the picture (07-unit-6-photo-3f9a1c2b4d5e.jpg): unchanged pictures keep their name, changed ones get a new one, so a sending tool never shows an old cached picture. Pictures come from the board's saved hosting: WordPress (uploads them; unchanged ones are reused), a folder URL, or each picture's own web address (urls / spread_update_board imageUrls, never exported). host: 'wordpress' uploads and saves that choice; it fails clearly if WordPress isn't connected (the user connects it once in Export → Upload to WordPress). baseUrl/urls/platform are saved on the board. Returns { ready, notReady?, missingAddresses?, folder, htmlFile, images, pictures: [{ nodeId, fileName, src }], bytes, warnings, subject, preheader, platform, hosted? }. email.html is only written when ready (every picture has a full web address), or as a draft with allowRelative. Without hosting: export once, the user uploads the picture files, then export again with baseUrl (the names stay the same). Sending through RentCafe (platform 'rentcafe', or saved on the board): when ready it also returns { html, copiedToClipboard, pasteSteps, note }; give the user the paste steps.",
+    inputSchema: { ...emailOpts, host: z.enum(['wordpress']).optional().describe("Upload the pictures to the connected WordPress site, use their URLs, and save WordPress as the board's hosting."), folder: z.string().optional(), scale: z.number().min(1).max(3).optional(), boardId },
   },
   passthrough('export_email', 300_000),
 );
@@ -991,7 +1013,8 @@ tool(
   'spread_list_projects',
   {
     title: 'List projects',
-    description: 'Lists every project on the Home page: name, path, kinds, board count, folder and last change. Use it to find past work to open or borrow ideas from.',
+    description:
+      "Lists every project on the Home page: { activeProject: { id, name, path } (the one your board tools act on), projects: [{ id, name, path, active, open (in a tab), kinds, boards, folder, updatedAt }] }. Use it to find the project the user means before switching with spread_open_project, or to find past work to borrow from. Read-only.",
     inputSchema: {},
   },
   passthrough('list_projects'),
@@ -1001,11 +1024,33 @@ tool(
   'spread_open_project',
   {
     title: 'Open project',
-    description: 'Opens a .spread project file (absolute path) in its own tab. Other open projects stay as they are, and they save themselves.',
-    inputSchema: { path: z.string() },
+    description:
+      "Switches Spread to a project, in its own tab, and waits until it has loaded: every later call (get_state, create_board, create_from_template, add_nodes…) acts on it until you open another. project = an id or name from spread_list_projects (a name matches whole, else in part; several matches is an error that lists them) or an absolute .spread path. Other open projects stay as they are and save themselves. Returns { project: { id, name, path }, activeBoardId, boards, brand }: check project before building.",
+    inputSchema: {
+      project: z.string().optional().describe('Project id, name or absolute .spread path (from spread_list_projects)'),
+      path: z.string().optional().describe('Older name for project: an absolute .spread path'),
+    },
     annotations: { destructiveHint: true },
   },
   passthrough('open_project', 300_000),
+);
+
+tool(
+  'spread_move_board',
+  {
+    title: 'Move a row to another project',
+    description:
+      "Moves a row (board) to another project as its bottom row, or copies it with copy: true. Everything goes with it: layers, slides, settings, email subject and preheader, note, status, the photos and uploaded fonts it uses (they join that project's photo tray; a photo it already has is reused) and the text styles and spacing tokens it follows. Board and layer ids stay the same unless that project already has the board id (then board.id in the result is the new one). Works whether the other project is open in a tab, closed, or new (newProject: 'Name' starts one with this row). A move takes the row out of this project as one undoable step; the only row in a project can't move (copy it). If the brands differ the result says so in brand: nothing is restyled, so ask the user before changing it. activate: true then switches to that project with the row active; otherwise you stay in this project. Returns { moved, board: { id, name, idChanged }, from, to: { id, name, path, was }, photos: { added, reused }, brand?, activated, activeProject, hint }.",
+    inputSchema: {
+      boardId: z.string().optional().describe('Row to move (default: the active row)'),
+      toProject: z.string().optional().describe('Destination: a project id, name or absolute .spread path from spread_list_projects'),
+      newProject: z.string().optional().describe('Instead of toProject: start a new project with this name, holding just this row'),
+      copy: z.boolean().optional().describe('Copy the row and leave it here too (default false: move)'),
+      activate: z.boolean().optional().describe('Switch to the destination project afterwards, with the row active (default false)'),
+    },
+    annotations: { destructiveHint: true },
+  },
+  passthrough('move_board', 300_000),
 );
 
 tool(
@@ -1013,7 +1058,7 @@ tool(
   {
     title: 'New project',
     description:
-      'Starts a blank project in a new tab (one carousel board of 3 portrait slides, empty tray). Other open projects stay as they are.',
+      'Starts a blank project in a new tab (one carousel board of 3 portrait slides, empty tray) and switches to it: later calls act on it until you open another. Other open projects stay as they are. Returns { project: { id, name, path }, activeBoardId, boards, brand }.',
     inputSchema: {
       name: z.string().optional().describe('Project name (used for export file names)'),
       discard: z.boolean().optional().describe('Discard unsaved changes in the open project'),
@@ -1061,8 +1106,12 @@ tool(
   'spread_export_pdf',
   {
     title: 'Export PDF',
-    description: `Exports a board (active, or boardId) as a PDF with real, selectable text and embedded fonts: one page per page/slide, page size = slide size in points. Photos are embedded at 300 dpi. Line breaks match the canvas exactly. path = absolute .pdf path (default: ~/Pictures/Spread/<name>-<date>.pdf). Returns { path, pages, bytes }. Follow with spread_pdf_text to check what an applicant-tracking system or screen reader will read.`,
-    inputSchema: { boardId, path: z.string().optional().describe('Absolute output path ending in .pdf') },
+    description: `Exports a board (active, or boardId) as a PDF with real, selectable text and embedded fonts: one page per page/slide, page size = slide size in points. Emails work too: by default one continuous page the size of the email (600px wide prints 600pt wide, height grows with it), or pages: 'letter' to split it across US Letter pages (fitted to the width, breaks kept out of text lines and, where it costs little, pictures and sections). Linked layers stay clickable (email tracking tags included). Photos are embedded at 300 dpi with their crops and effects. Line breaks match the canvas exactly. path = absolute .pdf path (default: ~/Pictures/Spread/<name>-<date>.pdf). Returns { path, pages, bytes }. Follow with spread_pdf_text to check what an applicant-tracking system or screen reader will read.`,
+    inputSchema: {
+      boardId,
+      path: z.string().optional().describe('Absolute output path ending in .pdf'),
+      pages: z.enum(['one', 'letter']).optional().describe("Email boards only: 'one' = one long page the size of the email (default), 'letter' = US Letter pages"),
+    },
   },
   passthrough('export_pdf', 180_000),
 );

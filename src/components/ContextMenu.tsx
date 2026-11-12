@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { MOD, useStore, currentLayout } from '../store';
 import { findNode, findParent } from '../tree';
 import { inAutoLayout } from '../layout';
-import { copySelection, pasteClipboard } from '../clipboard';
+import { copyLayers, pasteClipboard } from '../clipboard';
 import { absoluteBoxes } from '../render';
 import { Floating } from '../ui/Floating';
 import type { SceneNode } from '../types';
@@ -110,7 +110,7 @@ export default function ContextMenu({ menu, onClose }: { menu: MenuState; onClos
 
   const items: (null | Item)[] = sel.length
     ? [
-        { label: 'Copy', kbd: `${MOD}+C`, fn: copySelection },
+        { label: 'Copy', kbd: `${MOD}+C`, fn: copyLayers },
         { label: 'Paste', kbd: `${MOD}+V`, fn: () => pasteClipboard(menu.at) },
         { label: 'Duplicate', kbd: `${MOD}+D`, fn: s.duplicateSelection },
         { label: 'Delete', kbd: 'Del', fn: s.deleteSelection },

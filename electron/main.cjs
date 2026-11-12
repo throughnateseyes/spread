@@ -43,11 +43,28 @@ function buildMenu() {
     Menu.setApplicationMenu(null);
     return;
   }
-  // Undo/redo/select-all are deliberately absent: the renderer handles those keys itself.
+  // macOS gives text fields ⌘X/C/V/A/Z only through the Edit menu. Cut, copy and paste are the
+  // system's own (the renderer's copy/paste listeners decide between text and layers). Undo, redo and
+  // select all go to the renderer, which keeps them for a focused field and otherwise means the
+  // canvas (layers, history). The renderer sees the keys first and handles them there, so these
+  // items only run from a mouse click or when the page leaves a key alone.
+  const edit = (cmd) => (_item, w) => (w || win)?.webContents.send('edit-command', cmd);
   Menu.setApplicationMenu(
     Menu.buildFromTemplate([
       { label: app.name, submenu: [{ role: 'about' }, { type: 'separator' }, { role: 'hide' }, { role: 'hideOthers' }, { type: 'separator' }, { role: 'quit' }] },
-      { label: 'Edit', submenu: [{ role: 'cut' }, { role: 'copy' }, { role: 'paste' }] },
+      {
+        label: 'Edit',
+        submenu: [
+          { label: 'Undo', accelerator: 'CmdOrCtrl+Z', click: edit('undo') },
+          { label: 'Redo', accelerator: 'Shift+CmdOrCtrl+Z', click: edit('redo') },
+          { type: 'separator' },
+          { role: 'cut' },
+          { role: 'copy' },
+          { role: 'paste' },
+          { role: 'pasteAndMatchStyle' },
+          { label: 'Select All', accelerator: 'CmdOrCtrl+A', click: edit('selectAll') },
+        ],
+      },
       // ⌘W closes the project tab in the renderer, so the window takes ⇧⌘W.
       { label: 'Window', submenu: [{ role: 'minimize' }, { role: 'close', accelerator: 'Shift+CmdOrCtrl+W' }] },
     ]),
@@ -396,6 +413,10 @@ ipcMain.handle('hosting-connect', answer(hosting.connect));
 ipcMain.handle('hosting-disconnect', answer(hosting.disconnect));
 ipcMain.handle('hosting-upload', answer(hosting.upload));
 
+// ---------- reading web pages (listing links → cards) ----------
+
+ipcMain.handle('fetch-page', answer((url) => require('./fetchpage.cjs').fetchPage(url)));
+
 // ---------- Claude side panel ----------
 
 chat.init((update) => {
@@ -411,6 +432,12 @@ ipcMain.handle('chat-approve', (_e, opts) => chat.approve(opts));
 ipcMain.handle('chat-answer', (_e, opts) => chat.answerQuestions(opts));
 ipcMain.handle('chat-login', guard(chat.login));
 ipcMain.handle('chat-design-docs', (_e, dir) => chat.designDocs(dir));
+
+// ---------- live send check ----------
+// Loads a picture or link from the email on demand (electron/livecheck.cjs), past CORS.
+
+const livecheck = require('./livecheck.cjs');
+ipcMain.handle('live-check-url', answer(livecheck.check));
 
 // ---------- automation bridge (local HTTP → renderer) ----------
 // Lets local tools (e.g. an MCP server for Claude Code) drive the app. Bound to 127.0.0.1,

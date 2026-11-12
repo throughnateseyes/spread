@@ -85,14 +85,21 @@ function linksCheck(doc: Doc): SendCheck {
   return { ...base, level: 'fix', title: `${open.length} link${open.length === 1 ? '' : 's'} to fix`, detail, ids: open.map((l) => l.id) };
 }
 
+/** RentCafe adds the unsubscribe link and mailing address when it sends, so the design doesn't need them. */
+function sentBy(doc: Doc, id: 'unsubscribe' | 'address'): SendCheck | null {
+  if (doc.email?.platform !== 'rentcafe') return null;
+  const what = id === 'unsubscribe' ? { label: 'Unsubscribe', title: 'RentCafe adds the unsubscribe link' } : { label: 'Address', title: 'RentCafe adds the mailing address' };
+  return { id, ...what, level: 'ok', detail: 'Sending through RentCafe, which puts it in every email.', ids: [] };
+}
+
 export function sendChecks(doc: Doc, root: FrameNode, layout: LayoutMap): SendCheck[] {
   const { images } = buildEmailHtml(root, layout, { title: '', imageUrl: (_id, file) => file, tracking: doc.email?.tracking });
   const row = rowCheck(root, doc.email?.subject ?? '', doc.email?.preheader ?? '');
   const alt = imagesCheck(root, images);
   return [
     { id: 'subject', label: 'Subject', level: row.level, title: row.title, detail: row.detail, ids: [] },
-    unsubscribeCheck(root),
-    addressCheck(root),
+    sentBy(doc, 'unsubscribe') ?? unsubscribeCheck(root),
+    sentBy(doc, 'address') ?? addressCheck(root),
     linksCheck(doc),
     // The preview treats this as a note, but “Ready” shouldn't sit next to pictures with no alt text.
     { id: 'alt', label: 'Alt text', level: alt.level === 'ok' ? 'ok' : 'fix', title: alt.title, detail: alt.detail, ids: alt.ids ?? [] },

@@ -48,6 +48,7 @@ contextBridge.exposeInMainWorld('spreadNative', {
   hostingConnect: (opts) => ipcRenderer.invoke('hosting-connect', opts),
   hostingDisconnect: () => ipcRenderer.invoke('hosting-disconnect'),
   hostingUpload: (opts) => ipcRenderer.invoke('hosting-upload', opts),
+  fetchPage: (url) => ipcRenderer.invoke('fetch-page', url),
   claudeStatus: () => ipcRenderer.invoke('claude-status'),
   claudeConnect: (target) => ipcRenderer.invoke(target === 'desktop' ? 'claude-connect-desktop' : 'claude-connect-code'),
   claudeDisconnectCode: () => ipcRenderer.invoke('claude-disconnect-code'),
@@ -61,6 +62,7 @@ contextBridge.exposeInMainWorld('spreadNative', {
   chatAnswer: (opts) => ipcRenderer.invoke('chat-answer', opts),
   chatLogin: () => ipcRenderer.invoke('chat-login'),
   chatDesignDocs: (dir) => ipcRenderer.invoke('chat-design-docs', dir),
+  liveCheckUrl: (opts) => ipcRenderer.invoke('live-check-url', opts),
   onChatUpdate: (cb) => {
     const listener = (_e, u) => cb(u);
     ipcRenderer.on('chat-update', listener);
@@ -72,6 +74,11 @@ contextBridge.exposeInMainWorld('spreadNative', {
     const listener = (_e, p) => cb(p);
     ipcRenderer.on('open-path', listener);
     return () => ipcRenderer.removeListener('open-path', listener);
+  },
+  onEditCommand: (cb) => {
+    const listener = (_e, cmd) => cb(cmd);
+    ipcRenderer.on('edit-command', listener);
+    return () => ipcRenderer.removeListener('edit-command', listener);
   },
   onAutomationRequest: (cb) => {
     const listener = (_e, req) => cb(req);

@@ -28,9 +28,23 @@ export interface ClaudeStatus {
   lastClient: { name: string; at: number } | null;
 }
 
+/** A picture sent with a message, as the transcript keeps it: a small thumbnail, never the full image. */
+export interface ChatThumb {
+  thumb: string;
+  name: string;
+  width: number;
+  height: number;
+}
+
+/** A picture on its way to Claude Code: base64 for an image content block, plus its thumbnail. */
+export interface ChatImagePayload extends ChatThumb {
+  mediaType: string;
+  data: string;
+}
+
 /** One row of the Claude panel's transcript (built by electron/chat.cjs). */
 export type ChatItem =
-  | { id: string; at: number; kind: 'user'; text: string; label: string | null }
+  | { id: string; at: number; kind: 'user'; text: string; label: string | null; images?: ChatThumb[] }
   | { id: string; at: number; kind: 'text'; text: string }
   | { id: string; at: number; kind: 'tool'; toolId: string; name: string; label: string; detail?: string; status: 'running' | 'done' | 'error' | 'stopped'; error?: string }
   | { id: string; at: number; kind: 'approval'; requestId: string; name: string; label: string; detail?: string; preview: string; reason: string | null; status: 'pending' | 'allowed' | 'denied' | 'expired' }
@@ -49,7 +63,7 @@ export interface ChatState {
   key: string;
   items: ChatItem[];
   /** Sent while Claude was working, and not read yet. */
-  queued: { id: string; text: string; noteId?: string }[];
+  queued: { id: string; text: string; noteId?: string; images?: ChatThumb[] }[];
   status: 'idle' | 'working';
   hasSession: boolean;
   /** Where each canvas comment sent in this chat has got to, by comment id. */
@@ -68,7 +82,22 @@ export interface HostingStatus {
 }
 export type HostingAnswer<T> = ({ ok: true } & T) | { ok: false; error: string };
 
+/** What one address answered. width/height: a picture's size as shown; html: a page's source. */
+export interface LiveCheckAnswer {
+  status: number;
+  type: string;
+  finalUrl: string;
+  redirected: boolean;
+  bytes?: number;
+  width?: number;
+  height?: number;
+  html?: string;
+  title?: string;
+}
+
 export interface ProjectRecord {
+  /** Short and stable (it survives a rename), so Claude can name a project exactly. */
+  id?: string;
   path: string;
   folderId: string | null;
   /** When it was last opened here; 0 for files found in the default folder. */
@@ -142,6 +171,8 @@ export interface SpreadNative {
   hostingConnect(opts: { site: string; user: string; password: string }): Promise<HostingAnswer<HostingStatus>>;
   hostingDisconnect(): Promise<HostingAnswer<HostingStatus>>;
   hostingUpload(opts: { files: { name: string; type: string; hash: string; data: Uint8Array }[] }): Promise<HostingAnswer<{ urls: Record<string, string>; uploaded: number; reused: number }>>;
+  /** Reads a public web page in the main process (electron/fetchpage.cjs): 10s, 2 MB, redirects followed. */
+  fetchPage(url: string): Promise<HostingAnswer<FetchedPage>>;
   claudeStatus(): Promise<ClaudeStatus>;
   /** Desktop opens the .mcpb for Claude Desktop to install; code registers the server with Claude Code for every folder. */
   claudeConnect(target: 'desktop' | 'code'): Promise<{ ok: boolean; error?: string }>;
@@ -149,7 +180,7 @@ export interface SpreadNative {
   chatOpen(key: string): Promise<ChatState>;
   /** text is what the transcript shows; content is what Claude gets (with the <spread-context> block). */
   /** noteId: the message is a canvas comment, and its pin follows it through the chat. */
-  chatSend(opts: { key: string; cwd?: string; text: string; content: string; label?: string; noteId?: string }): Promise<void>;
+  chatSend(opts: { key: string; cwd?: string; text: string; content: string; label?: string; noteId?: string; images?: ChatImagePayload[] }): Promise<void>;
   chatRetry(key: string): Promise<void>;
   chatStop(key: string): Promise<void>;
   chatReset(key: string): Promise<void>;
@@ -159,9 +190,13 @@ export interface SpreadNative {
   chatAnswer(opts: { key: string; requestId: string; answers: Record<string, string> | null }): Promise<void>;
   chatLogin(): Promise<{ ok: boolean; error?: string }>;
   chatDesignDocs(dir: string): Promise<string[]>;
+  /** Loads one picture or link from an email for the send checklist's live check (electron/livecheck.cjs). */
+  liveCheckUrl(opts: { url: string; kind: 'image' | 'page' }): Promise<HostingAnswer<LiveCheckAnswer>>;
   onChatUpdate(cb: (u: ChatState) => void): () => void;
   pathForFile(file: File): string;
   onOpenPath(cb: (path: string) => void): () => void;
+  /** Edit menu items (macOS): undo, redo and select all, routed to whatever has focus. */
+  onEditCommand?(cb: (cmd: 'undo' | 'redo' | 'selectAll') => void): () => void;
   onAutomationRequest(cb: (req: AutomationRequest) => void): () => void;
   respondAutomation(resp: AutomationResponse): void;
 }
@@ -188,6 +223,31 @@ export async function fetchImage(url: string): Promise<{ data: Uint8Array; type:
   const res = await fetch(url);
   if (!res.ok) throw new Error(`The server answered ${res.status}.`);
   return { data: new Uint8Array(await res.arrayBuffer()), type: res.headers.get('content-type') || 'image/jpeg' };
+}
+
+export interface FetchedPage {
+  /** Where the page ended up after redirects. */
+  url: string;
+  status: number;
+  type: string;
+  html: string;
+}
+
+/** Reads a web page. In the browser this only works for sites that allow it (CORS), which listing sites don't. */
+export async function fetchPage(url: string): Promise<FetchedPage> {
+  if (native) {
+    const r = await native.fetchPage(url);
+    if (!r.ok) throw new Error(r.error);
+    return { url: r.url, status: r.status, type: r.type, html: r.html };
+  }
+  let res: Response;
+  try {
+    res = await fetch(url);
+  } catch {
+    throw new Error('Reading listing pages needs the Spread desktop app.');
+  }
+  if (!res.ok) throw new Error(`The site answered ${res.status}.`);
+  return { url: res.url || url, status: res.status, type: res.headers.get('content-type') || '', html: await res.text() };
 }
 
 export function readFile(path: string): Promise<NativeFile> {

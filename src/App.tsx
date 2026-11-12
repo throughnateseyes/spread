@@ -8,6 +8,7 @@ import ExportDialog from './components/ExportDialog';
 import PreviewModal from './components/PreviewModal';
 import ArrangeDialog from './components/ArrangeDialog';
 import RepeatDialog from './components/RepeatDialog';
+import ListingCardsDialog from './components/ListingCardsDialog';
 import StylesDialog from './components/StylesPanel';
 import EmailExportDialog from './components/EmailExportDialog';
 import InboxPreviewDialog from './components/InboxPreview';
@@ -91,6 +92,7 @@ export default function App() {
       {homeOpen && <Home />}
       {isElectron && <Switcher />}
       {modal === 'export' && (emailRoot ? <EmailExportDialog onClose={close} root={emailRoot} nodes={doc.nodes} /> : doc.kind === 'document' ? <PdfExportDialog /> : <ExportDialog />)}
+      {modal === 'pdf' && <PdfExportDialog />}
       {modal === 'new-board' && <NewBoardDialog />}
       {modal === 'claude' && <ClaudeDialog />}
       {modal === 'brands' && <BrandsDialog />}
@@ -100,6 +102,7 @@ export default function App() {
       {modal === 'inbox' && emailRoot && <InboxPreviewDialog root={emailRoot} onClose={close} />}
       {modal === 'arrange' && <ArrangeDialog />}
       {modal === 'repeat' && <RepeatDialog />}
+      <ListingCardsDialog />
       {modal === 'styles' && <StylesDialog />}
       {modal === 'shortcuts' && (
         <Modal title="Keyboard shortcuts" onClose={close} width={560}>

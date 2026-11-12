@@ -59,7 +59,11 @@ export function projectName(p: Project = useStore.getState().project) {
 // ---------- serialise ----------
 
 export async function serializeProject(): Promise<Uint8Array> {
-  const { project, comments, changes } = useStore.getState();
+  return serializeProjectData(useStore.getState());
+}
+
+/** Any project as file bytes: the open one, a parked tab, or a new one made from a moved row. */
+export async function serializeProjectData({ project, comments = [], changes = [] }: { project: Project; comments?: CanvasComment[]; changes?: ChangeEntry[] }): Promise<Uint8Array> {
   const files: Zippable = {};
   const json: ProjectJson = { app: 'spread', version: 2, project, comments: savableComments(project, comments), changes };
   files['project.json'] = [strToU8(JSON.stringify(json)), { level: 6 }];
@@ -73,6 +77,48 @@ export async function serializeProject(): Promise<Uint8Array> {
     if (!rec) continue;
     const bytes = new Uint8Array(await rec.blob.arrayBuffer());
     files[`assets/${meta.id}.${extFor(meta)}`] = [bytes, { level: meta.kind === 'font' ? 6 : 0 }];
+  }
+  return zipSync(files);
+}
+
+// ---------- a project that isn't open ----------
+
+/** A .spread file read apart, so a closed project can take a row without being opened. */
+export interface ProjectFile {
+  project: Project;
+  json: ProjectJson;
+  entries: Record<string, Uint8Array>;
+  /** Asset bytes by asset id. */
+  assets: Map<string, Uint8Array>;
+}
+
+export function readProjectFile(data: Uint8Array): ProjectFile {
+  const entries = unzipSync(data);
+  const raw = entries['project.json'];
+  if (!raw) throw new Error('missing project.json');
+  const json: ProjectJson = JSON.parse(strFromU8(raw));
+  if (json.app !== 'spread' || !(json.project || json.doc)) throw new Error('not a Spread project');
+  const assets = new Map<string, Uint8Array>();
+  for (const [name, bytes] of Object.entries(entries)) {
+    const m = name.match(/^assets\/([^.]+)\./);
+    if (m) assets.set(m[1], bytes);
+  }
+  return { project: migrateProject(json.project ?? json.doc), json, entries, assets };
+}
+
+const FONT_FILE = /\.(ttf|otf|woff2?)$/i;
+
+/** The same file with a new project.json and any added assets. Everything else in it stays as it was. */
+export async function rewriteProjectFile(file: ProjectFile, project: Project, added: AssetMeta[]): Promise<Uint8Array> {
+  const files: Zippable = {};
+  for (const [name, bytes] of Object.entries(file.entries)) {
+    if (name !== 'project.json') files[name] = [bytes, { level: name.startsWith('assets/') && !FONT_FILE.test(name) ? 0 : 6 }];
+  }
+  const { doc: _legacy, ...json } = file.json;
+  files['project.json'] = [strToU8(JSON.stringify({ ...json, app: 'spread', version: 2, project } satisfies ProjectJson)), { level: 6 }];
+  for (const meta of added) {
+    const rec = getAsset(meta.id);
+    if (rec) files[`assets/${meta.id}.${extFor(meta)}`] = [new Uint8Array(await rec.blob.arrayBuffer()), { level: meta.kind === 'font' ? 6 : 0 }];
   }
   return zipSync(files);
 }

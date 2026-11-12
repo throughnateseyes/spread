@@ -131,6 +131,8 @@ export interface ImageNode extends BaseNode {
   effects?: PhotoEffect[];
   stroke: string | null;
   strokeWidth: number;
+  /** Email: on phones the picture spans the whole screen, edge to edge, whatever the padding around it. */
+  phoneFullWidth?: boolean;
 }
 
 export interface TextNode extends BaseNode {
@@ -198,6 +200,13 @@ export interface FrameNode extends BaseNode {
   children: SceneNode[];
   /** This frame's children are generated from a table of cards. See repeat.ts. */
   repeat?: RepeatSpec;
+  /**
+   * Email rows: how the row lays out on phones. 'stack' puts the cells one under another,
+   * 'side-by-side' keeps them across. Unset = automatic (rows of photos or cards stack).
+   */
+  phoneStack?: 'stack' | 'side-by-side';
+  /** Email: on phones the frame spans the whole screen, edge to edge, whatever the padding around it. */
+  phoneFullWidth?: boolean;
 }
 
 export type SceneNode = ImageNode | TextNode | ShapeNode | FrameNode;
@@ -310,7 +319,16 @@ export interface EmailMeta {
   hosting?: PictureHosting;
   /** Layers that look like buttons but are meant to go nowhere (the "needs a link" hint is dismissed). */
   noLink?: string[];
+  /**
+   * A picture's own web address by layer id (absolute https URL). Wins over every hosting mode;
+   * such pictures aren't rendered, uploaded or written to the export folder.
+   */
+  imageUrls?: Record<string, string>;
+  /** The tool that sends this email. 'rentcafe' adds the unsubscribe link and mailing address itself. */
+  platform?: EmailPlatform;
 }
+
+export type EmailPlatform = 'rentcafe' | 'other';
 
 /** wordpress: Spread uploads them. base: one folder URL + the exported file names. each: a URL per picture. */
 export type PictureHostMode = 'wordpress' | 'base' | 'each';
@@ -318,7 +336,7 @@ export type PictureHostMode = 'wordpress' | 'base' | 'each';
 export interface PictureHosting {
   mode: PictureHostMode;
   baseUrl?: string;
-  /** mode 'each': picture URL by layer id. */
+  /** Older boards, mode 'each': picture URL by layer id. New addresses go in EmailMeta.imageUrls. */
   urls?: Record<string, string>;
 }
 

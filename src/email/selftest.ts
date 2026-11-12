@@ -1,7 +1,11 @@
-import type { FrameNode } from '../types';
+import type { Doc, FrameNode, ImageNode } from '../types';
 import { computeLayout } from '../layout';
-import { buildEmailHtml, GMAIL_CLIP_BYTES, joinUrl } from './html';
-import { EMAIL_SECTIONS, EMAIL_TEMPLATES, makeEmailRoot } from './templates';
+import { makeEmailBoard, makeFrame, walk } from '../tree';
+import { buildEmailHtml, collectEmailImages, GMAIL_CLIP_BYTES, joinUrl, type TwoAcrossText } from './html';
+import { EMAIL_SECTIONS, EMAIL_TEMPLATES, emailText, footerSection, makeEmailRoot, photoPicker, twoUpSection } from './templates';
+import { renderEmailImages, withHash } from './images';
+import { missingAddressText, pictureSources, pictureSrc, picturesToRender, picturesWithoutAddress, platformWarnings, renderedNames } from './hosting';
+import { sendChecks } from './checklist';
 
 // Dev self-test for the email engine. From devtools:
 //   (await import('/src/email/selftest.ts')).emailSelfTest()
@@ -40,11 +44,58 @@ function check(html: string, root: FrameNode): string[] {
   return f;
 }
 
+/**
+ * Phone layout and hugging text: a two-across card grid whose cards hold a two-line address that
+ * hugs its words, a hugging address block, a hugging line beside a box, a full-width photo, and
+ * rows set by property and by the older name tags.
+ */
+function phoneLayoutCase(): { root: FrameNode; failures: (html: string, twoAcross: TwoAcrossText[]) => string[] } {
+  const grid = twoUpSection(photoPicker([]), [
+    { title: 'A', meta: ['1 bed'] },
+    { title: 'B', meta: ['2 bed'] },
+  ]);
+  const cards = grid.children as FrameNode[];
+  for (const card of cards) {
+    card.children.splice(1, 0, emailText('1050 Post St\nSan Francisco', 'h4', { hug: true, name: 'Address' }));
+    const block = makeFrame(0, 0, 100, 40, { name: 'Address block', layout: 'column', sizingH: 'hug', sizingV: 'hug', fill: null, gap: 4, padding: { t: 0, r: 0, b: 0, l: 0 } });
+    block.children = [emailText('1050 Post St', 'body', { hug: true }), emailText('Unit 4', 'meta', { hug: true })];
+    card.children.push(block);
+  }
+  (cards[0].children[0] as ImageNode).phoneFullWidth = true;
+  const box = makeFrame(0, 0, 200, 40, { name: 'Box', layout: 'column', sizingH: 'fixed', fill: { kind: 'solid', color: '#EEEEEE' } });
+  const line = makeFrame(0, 0, 536, 40, { name: 'Pin row', layout: 'row', sizingH: 'fill', sizingV: 'hug', fill: null, gap: 12, padding: { t: 20, r: 32, b: 0, l: 32 } });
+  line.children = [emailText('1050 Post St', 'body', { hug: true, name: 'Pin address' }), box];
+  // Same grid kept side by side: by property (which beats a [stack] tag), and by the older tag.
+  const sideProp = twoUpSection(photoPicker([]), [{ title: 'C' }, { title: 'D' }]);
+  sideProp.name = 'Section / Side by prop [stack]';
+  sideProp.phoneStack = 'side-by-side';
+  const sideTag = twoUpSection(photoPicker([]), [{ title: 'E' }, { title: 'F' }]);
+  sideTag.name = 'Section / Side by tag [nostack]';
+  const root = makeEmailRoot([grid, line, sideProp, sideTag, footerSection()], 'Email / Phone layout');
+  const failures = (html: string, twoAcross: TwoAcrossText[]) => {
+    const f: string[] = [];
+    if (/width="\d+"[^>]*>\s*<tr><td[^>]*>1050 Post St<br>/.test(html)) f.push('two-line hugging address is pinned to a px column');
+    if (!/<table role="presentation" cellpadding="0" cellspacing="0" border="0">\s*<tr><td[^>]*>1050 Post St<\/td>/.test(html)) f.push('hugging address block is not a shrink-to-fit table');
+    if (!/class="es-col"[^>]*white-space:nowrap[^>]*>1050 Post St</.test(html)) f.push('hugging text in a stacking row can wrap on desktop');
+    if (!/class="es-img es-bleed"/.test(html)) f.push('full-width photo has no es-bleed class');
+    if (!/\.es-edge\{padding-left:0!important;padding-right:0!important\}/.test(html)) f.push('no es-edge rule in the mobile CSS');
+    if (!/class="[^"]*es-pl32 es-pr32/.test(html)) f.push('cells beside the full-width photo do not get their padding back');
+    const rows = new Set(twoAcross.map((t) => t.rowId));
+    if (!rows.has(sideProp.id)) f.push('phoneStack side-by-side (over a [stack] tag) did not keep the row across');
+    if (!rows.has(sideTag.id)) f.push('[nostack] tag no longer keeps the row across');
+    if (rows.has(grid.id)) f.push('automatic card grid did not stack');
+    return f;
+  };
+  return { root, failures };
+}
+
 export function emailSelfTest(opts: { html?: boolean } = {}): EmailSelfTestResult[] {
-  const cases: { id: string; root: FrameNode }[] = EMAIL_TEMPLATES.map((t) => ({ id: t.id, root: t.build([]) }));
+  const cases: { id: string; root: FrameNode; extra?: (html: string, twoAcross: TwoAcrossText[]) => string[] }[] = EMAIL_TEMPLATES.map((t) => ({ id: t.id, root: t.build([]) }));
   // Every section in one email, so the button / unit grid / details paths are exercised too.
   cases.push({ id: 'all-sections', root: makeEmailRoot(EMAIL_SECTIONS.map((s) => s.build([])), 'Email / All sections') });
-  const results = cases.map(({ id, root }) => {
+  const phone = phoneLayoutCase();
+  cases.push({ id: 'phone-layout', root: phone.root, extra: phone.failures });
+  const results = cases.map(({ id, root, extra }) => {
     const layout = computeLayout([root]);
     const r = buildEmailHtml(root, layout, {
       title: id,
@@ -58,7 +109,7 @@ export function emailSelfTest(opts: { html?: boolean } = {}): EmailSelfTestResul
       underGmailLimit: r.bytes <= GMAIL_CLIP_BYTES,
       images: r.images.length,
       warnings: r.warnings,
-      failures: check(r.html, root),
+      failures: [...check(r.html, root), ...(extra?.(r.html, r.twoAcross) ?? [])],
       ...(opts.html ? { html: r.html } : {}),
     };
   });
@@ -68,4 +119,100 @@ export function emailSelfTest(opts: { html?: boolean } = {}): EmailSelfTestResul
   return results;
 }
 
-if (typeof window !== 'undefined') (window as unknown as { __emailSelfTest?: typeof emailSelfTest }).__emailSelfTest = emailSelfTest;
+// ---------- picture addresses ----------
+// From devtools: await (await import('/src/email/selftest.ts')).emailHostingSelfTest()
+// Checks the one resolver every export path uses: hosting defaults, the "no web address" block,
+// content-hashed file names, pictures' own addresses and the RentCafe platform.
+
+export interface HostingCheck {
+  check: string;
+  ok: boolean;
+  detail?: string;
+}
+
+export async function emailHostingSelfTest(): Promise<HostingCheck[]> {
+  const out: HostingCheck[] = [];
+  const expect = (check: string, ok: boolean, detail?: unknown) => out.push({ check, ok, ...(ok ? {} : { detail: typeof detail === 'string' ? detail : JSON.stringify(detail) }) });
+  const root = makeEmailRoot(EMAIL_SECTIONS.map((sec) => sec.build([])), 'Email / Hosting test');
+  const board = (email: Doc['email']): Doc => ({ ...makeEmailBoard('Hosting test'), nodes: [root], email });
+  const layout = computeLayout([root]);
+  const images = collectEmailImages(root, layout);
+  expect('the test email has pictures', images.length >= 2, images.length);
+  const [first, second] = images;
+  const FOLDER = 'https://cdn.example.com/eblasts/test/';
+
+  expect('withHash puts the hash before the extension', withHash('07-unit-6-photo.jpg', '3f9a1c') === '07-unit-6-photo-3f9a1c.jpg', withHash('07-unit-6-photo.jpg', '3f9a1c'));
+
+  // Defaults: never WordPress without a connected site.
+  let legacy: string | null = null;
+  try {
+    legacy = localStorage.getItem('spread.email.hosting');
+  } catch {
+    // no storage
+  }
+  if (!legacy) expect('no saved hosting and no WordPress: one folder address', pictureSources(board(undefined), {}, null).hosting.mode === 'base', pictureSources(board(undefined), {}, null).hosting);
+
+  // No folder yet: every picture is blocked, and the message says what to do.
+  const noFolder = pictureSources(board({ hosting: { mode: 'base', baseUrl: '' } }), {}, null);
+  const lacking = picturesWithoutAddress(noFolder, images);
+  expect('no folder: every picture lacks a web address', lacking.length === images.length, lacking.length);
+  expect('no folder: the message asks for the folder address', /folder/i.test(missingAddressText(noFolder, lacking, 'app', null)), missingAddressText(noFolder, lacking, 'app', null));
+  expect('no folder: src is the bare file name (draft only)', pictureSrc(noFolder, first.nodeId, first.fileName) === first.fileName, pictureSrc(noFolder, first.nodeId, first.fileName));
+
+  // A folder, but not rendered yet: still blocked (the exported name needs the hash).
+  const folder = board({ hosting: { mode: 'base', baseUrl: FOLDER } });
+  expect('folder, not rendered: still blocked', picturesWithoutAddress(pictureSources(folder, {}, null), images).length === images.length);
+
+  // Rendered: hashed names, full addresses, nothing blocked.
+  const files = await renderEmailImages(root, layout, images, 1);
+  const named = pictureSources(folder, { files: renderedNames(files) }, null);
+  expect('every picture rendered', files.length === images.length, `${files.length} of ${images.length}`);
+  expect('exported names carry a 12-character hash', files.every((f) => /-[0-9a-f]{12}\.(jpg|png)$/.test(f.fileName) && f.fileName === withHash(f.baseName, f.hash)), files.map((f) => f.fileName));
+  expect('folder + rendered: nothing blocked', picturesWithoutAddress(named, images).length === 0, picturesWithoutAddress(named, images));
+  expect('folder + rendered: src is folder + hashed name', pictureSrc(named, first.nodeId, first.fileName) === joinUrl(FOLDER, files[0].fileName), pictureSrc(named, first.nodeId, first.fileName));
+  const html = buildEmailHtml(root, layout, { title: 't', imageUrl: (id, f) => pictureSrc(named, id, f) }).html;
+  const srcs = [...html.matchAll(/<img src="([^"]+)"/g)].map((m) => m[1]);
+  expect('every <img> in the HTML has a full address', srcs.length === images.length && srcs.every((u) => u.startsWith(FOLDER)), srcs);
+
+  // Same picture, same name; changed picture, new name.
+  const again = await renderEmailImages(root, layout, images, 1);
+  expect('unchanged pictures keep their names', again.every((f, i) => f.fileName === files[i].fileName), again.map((f) => f.fileName));
+  const changed = structuredClone(root);
+  let photo: ImageNode | null = null;
+  walk([changed], (n) => {
+    if (!photo && n.type === 'image' && n.id === first.nodeId) photo = n;
+  });
+  if (photo) (photo as ImageNode).opacity = 0.5;
+  const changedLayout = computeLayout([changed]);
+  const [redone] = await renderEmailImages(changed, changedLayout, collectEmailImages(changed, changedLayout).slice(0, 1), 1);
+  expect('a changed picture gets a new name', !!redone && redone.baseName === files[0].baseName && redone.fileName !== files[0].fileName, [redone?.fileName, files[0].fileName]);
+
+  // A picture's own web address wins over every mode and isn't rendered.
+  const OWN = 'https://photos.example.com/duboce-unit-6.jpg';
+  for (const mode of ['wordpress', 'base', 'each'] as const) {
+    const s = pictureSources(board({ hosting: { mode, baseUrl: FOLDER }, imageUrls: { [first.nodeId]: OWN } }), {}, null);
+    expect(`own address wins in ${mode}`, pictureSrc(s, first.nodeId, first.fileName) === OWN, pictureSrc(s, first.nodeId, first.fileName));
+    expect(`own address isn't rendered in ${mode}`, !picturesToRender(s, images).some((im) => im.nodeId === first.nodeId) && picturesToRender(s, images).some((im) => im.nodeId === second.nodeId));
+  }
+  const wpOnly = pictureSources(board({ hosting: { mode: 'wordpress' }, imageUrls: { [first.nodeId]: OWN } }), {}, null);
+  expect('WordPress, not uploaded: only pictures without their own address are blocked', picturesWithoutAddress(wpOnly, images).length === images.length - 1);
+  const share = pictureSources(board({ hosting: { mode: 'base', baseUrl: FOLDER }, imageUrls: { [first.nodeId]: 'https://www.dropbox.com/s/abc/photo.jpg' } }), { files: renderedNames(files) }, null);
+  expect('a share link is not a web address', picturesWithoutAddress(share, images).some((m) => m.nodeId === first.nodeId));
+
+  // RentCafe adds the unsubscribe link and the mailing address.
+  const rc = sendChecks(board({ platform: 'rentcafe' }), root, layout);
+  expect('RentCafe: unsubscribe and address pass', rc.filter((c) => c.id === 'unsubscribe' || c.id === 'address').every((c) => c.level === 'ok'), rc);
+  const bare = makeEmailRoot([EMAIL_SECTIONS[0].build([])]);
+  const plain = buildEmailHtml(bare, computeLayout([bare]), { title: 't', imageUrl: (_id, f) => f });
+  const warned = plain.warnings.some((w) => /^No unsubscribe link found/.test(w));
+  expect('RentCafe: no missing-unsubscribe warning', !warned || platformWarnings(board({ platform: 'rentcafe' }), plain.warnings).length === plain.warnings.length - 1);
+
+  if (typeof console !== 'undefined' && console.table) console.table(out.map(({ check, ok, detail }) => ({ check, ok: ok ? 'ok' : 'FAIL', detail: detail ?? '' })));
+  return out;
+}
+
+if (typeof window !== 'undefined') {
+  const w = window as unknown as { __emailSelfTest?: typeof emailSelfTest; __emailHostingSelfTest?: typeof emailHostingSelfTest };
+  w.__emailSelfTest = emailSelfTest;
+  w.__emailHostingSelfTest = emailHostingSelfTest;
+}

@@ -2,13 +2,36 @@ import { useStore, currentLayout } from '../store';
 import { homeDir, native, picturesDir, writeFiles } from '../platform';
 import { safeFileName } from '../project';
 import { blobToDataUrl, fontFaceCss } from '../pdf';
-import { buildEmailHtml, collectEmailImages, joinUrl } from './html';
+import { buildEmailHtml, collectEmailImages, parseNameTags, type EmailImage } from './html';
 import { fontSwaps, inboxChecks, inboxHtml, inboxMetrics, measureHtml, viewWidth, type InboxDevice, type InboxFonts, type InboxSource, type InboxView } from './preview';
 import { renderEmailImages } from './images';
 import { EMAIL_SECTIONS, EMAIL_TEMPLATES } from './templates';
 import { sendChecks } from './checklist';
+import { compactLive, startLiveCheck } from './livecheck';
 import { createEmailBoard, emailRootOf, insertEmailSection } from './boards';
-import { hostEmailImages } from './hosting';
+import {
+  hostEmailImages,
+  imageUrlProblem,
+  missingAddressText,
+  pictureAddress,
+  pictureFileName,
+  pictureSources,
+  pictureSrc,
+  picturesToRender,
+  picturesWithoutAddress,
+  platformWarnings,
+  refreshWordPress,
+  renderedNames,
+  RENTCAFE_NOTE,
+  RENTCAFE_STEPS,
+  setBoardHosting,
+  setEmailPlatform,
+  setImageUrls,
+  type PictureSources,
+  type WordPress,
+} from './hosting';
+import { findNode } from '../tree';
+import type { Doc, FrameNode } from '../types';
 import { createFromTemplate, insertSavedSection, useLibrary } from '../library';
 
 // Automation (Claude) methods for email boards. Registered by src/automation.ts.
@@ -22,21 +45,69 @@ function activeEmailRoot() {
   return { doc, root };
 }
 
-function compile(p: Params, hosted: Record<string, string> = {}) {
-  const { doc, root } = activeEmailRoot();
-  const layout = currentLayout();
-  // The board remembers where its pictures live; explicit params win.
-  const h = doc.email?.hosting;
-  const urls: Record<string, string> = { ...(h?.mode === 'each' ? h.urls : {}), ...hosted, ...(p.urls ?? {}) };
-  const base: string = p.baseUrl ?? (h?.mode === 'base' ? h.baseUrl?.trim() ?? '' : '');
-  const result = buildEmailHtml(root, layout, {
+/**
+ * Saves what this call says about the pictures on the board (baseUrl, urls, host, platform), so
+ * every later export, Copy HTML and the Export window use it too. Returns the updated board.
+ */
+function savePictureParams(p: Params, root: FrameNode): Doc {
+  const id = useStore.getState().doc.id;
+  if (typeof p.baseUrl === 'string' && p.baseUrl.trim()) {
+    const problem = imageUrlProblem(p.baseUrl);
+    if (problem) throw new Error(`baseUrl "${p.baseUrl}": ${problem}`);
+    setBoardHosting(id, { mode: 'base', baseUrl: p.baseUrl.trim() });
+  } else if (p.host === 'wordpress') {
+    setBoardHosting(id, { mode: 'wordpress' });
+  }
+  if (p.urls && typeof p.urls === 'object') {
+    const pictures = new Set(collectEmailImages(root, currentLayout()).map((im) => im.nodeId));
+    for (const [nodeId, url] of Object.entries(p.urls as Record<string, string | null>)) {
+      if (!pictures.has(nodeId)) throw new Error(`urls: "${nodeId}" isn't a picture in this email. Picture ids: ${[...pictures].join(', ') || 'none'}.`);
+      const problem = url?.trim() ? imageUrlProblem(url) : null;
+      if (problem) throw new Error(`urls["${nodeId}"] "${url}": ${problem}`);
+    }
+    setImageUrls(id, p.urls);
+  }
+  if (p.platform === 'rentcafe' || p.platform === 'other') setEmailPlatform(id, p.platform);
+  return useStore.getState().doc;
+}
+
+/** The board's picture addresses, after saving this call's params. */
+async function sourcesFor(p: Params) {
+  const { root } = activeEmailRoot();
+  const doc = savePictureParams(p, root);
+  const wp = await refreshWordPress();
+  return { doc, root, layout: currentLayout(), wp, sources: pictureSources(doc, {}, wp) };
+}
+
+function compile(doc: Doc, root: FrameNode, p: Params, sources: PictureSources) {
+  const result = buildEmailHtml(root, currentLayout(), {
     title: p.title ?? doc.email?.subject ?? doc.name,
     preheader: p.preheader ?? doc.email?.preheader ?? '',
-    imageUrl: (nodeId, fileName) => urls[nodeId] ?? (base ? joinUrl(base, fileName) : fileName),
+    imageUrl: (nodeId, fileName) => pictureSrc(sources, nodeId, fileName),
     links: p.links,
     tracking: doc.email?.tracking,
   });
-  return { doc, root, layout, result };
+  return { ...result, warnings: platformWarnings(doc, result.warnings) };
+}
+
+/** Pictures still without a full web address, with their layer names, and what to do about it. */
+function addressCheck(root: FrameNode, sources: PictureSources, images: EmailImage[], wp: WordPress) {
+  const missing = picturesWithoutAddress(sources, images).map((m) => ({ ...m, name: parseNameTags(findNode([root], m.nodeId)?.name ?? '').clean || undefined }));
+  return { missing, text: missing.length ? missingAddressText(sources, missing, 'claude', wp) : null };
+}
+
+/** What Claude sees for each picture: its exported name and where it will load from. */
+function pictureList(sources: PictureSources, images: EmailImage[]) {
+  return images.map((i) => ({ nodeId: i.nodeId, fileName: pictureFileName(sources, i.nodeId, i.fileName), src: pictureAddress(sources, i.nodeId, i.fileName), alt: i.alt, width: i.width, height: i.height }));
+}
+
+async function copyToClipboard(text: string) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function base64(bytes: Uint8Array) {
@@ -87,24 +158,41 @@ export const emailHandlers: Record<string, (p: Params) => Promise<unknown> | unk
     return { sectionId: id };
   },
 
-  /** Compiled HTML (for Claude to read/check) without writing files. */
-  email_html(p) {
-    const { result } = compile(p);
+  /**
+   * Compiled HTML (for Claude to read/check) without writing files. The HTML only comes back when
+   * every picture has a full web address, or as a draft with allowRelative.
+   */
+  async email_html(p) {
+    const { doc, root, layout, wp, sources } = await sourcesFor(p);
+    // A folder address needs the exported (hashed) names, which come from rendering the pictures.
+    const base = sources.hosting.mode === 'base' && sources.hosting.baseUrl?.trim();
+    const toRender = picturesToRender(sources, collectEmailImages(root, layout));
+    if (base && toRender.length) sources.files = renderedNames(await renderEmailImages(root, layout, toRender, p.scale ?? 2));
+    const result = compile(doc, root, p, sources);
+    const check = addressCheck(root, sources, result.images, wp);
+    const ready = !check.missing.length;
     const max = p.maxChars ?? 60000;
+    const html = result.html.length > max ? result.html.slice(0, max) + '\n<!-- …truncated -->' : result.html;
     return {
+      ready,
+      ...(check.text ? { notReady: check.text, missingAddresses: check.missing } : {}),
       bytes: result.bytes,
       warnings: result.warnings,
       placeholders: result.placeholders,
-      images: result.images.map((i) => ({ nodeId: i.nodeId, fileName: i.fileName, alt: i.alt, width: i.width, height: i.height })),
-      html: result.html.length > max ? result.html.slice(0, max) + '\n<!-- …truncated -->' : result.html,
+      images: pictureList(sources, result.images),
+      platform: doc.email?.platform ?? null,
+      ...(ready ? { html } : p.allowRelative ? { draft: true, html } : { html: null }),
     };
   },
 
   /** The five things to get right before sending, as the strip in the app shows them. */
-  send_check() {
+  async send_check(p) {
     const { doc, root } = activeEmailRoot();
     const checks = sendChecks(doc, root, currentLayout());
-    return { ready: !checks.some((c) => c.level === 'fix'), toFix: checks.filter((c) => c.level === 'fix').length, checks: checks.map(({ label: _label, ...c }) => c) };
+    // live: also load every picture and link (the checklist's Live check), which takes a few seconds.
+    const live = p.live ? compactLive(await startLiveCheck(doc, root, currentLayout())) : undefined;
+    const toFix = checks.filter((c) => c.level === 'fix').length + (live?.problems.filter((x) => x.level === 'fix').length ?? 0);
+    return { ready: !toFix, toFix, checks: checks.map(({ label: _label, ...c }) => c), ...(live ? { live } : {}) };
   },
 
   /** The compiled email as an inbox shows it: checks always, pictures when the desktop app can take them. */
@@ -140,33 +228,42 @@ export const emailHandlers: Record<string, (p: Params) => Promise<unknown> | unk
   },
 
   async export_email(p) {
-    // Pictures first, so they can be uploaded and the HTML compiled with their hosted URLs.
-    const { root } = activeEmailRoot();
-    const layout = currentLayout();
-    const images = await renderEmailImages(root, layout, collectEmailImages(root, layout), p.scale ?? 2);
-    const hosting = p.host === 'wordpress' && images.length ? await hostEmailImages(images) : null;
-    const { doc, result } = compile(p, hosting?.urls);
+    // Pictures first, so they can be named by their content, uploaded, and the HTML compiled with their addresses.
+    const { doc, root, layout, wp, sources } = await sourcesFor(p);
+    const toRender = picturesToRender(sources, collectEmailImages(root, layout));
+    const upload = sources.hosting.mode === 'wordpress' && toRender.length > 0;
+    if (upload && !wp && p.host === 'wordpress') throw new Error('WordPress isn’t connected. Ask the user to connect it once in Export → Upload to WordPress, or upload the pictures elsewhere and export with baseUrl.');
+    const images = await renderEmailImages(root, layout, toRender, p.scale ?? 2);
+    sources.files = renderedNames(images);
+    const hosting = upload && wp ? await hostEmailImages(images) : null;
+    if (hosting) sources.uploaded = hosting.urls;
+    const result = compile(doc, root, p, sources);
+    const check = addressCheck(root, sources, result.images, wp);
+    const ready = !check.missing.length;
+    // HTML with broken picture addresses is what ends up pasted into a sending tool, so it's only written when ready (or asked for as a draft).
+    const writeHtml = ready || !!p.allowRelative;
     const folder: string = p.folder ?? `${picturesDir ?? homeDir ?? '.'}/Spread/${safeFileName(doc.name)}-email-${today()}`;
-    const files = [
-      ...images.map((i) => ({ name: i.fileName, data: i.blob })),
-      { name: 'email.html', data: new Blob([result.html], { type: 'text/html' }) },
-    ];
+    const files = [...images.map((i) => ({ name: i.fileName, data: i.blob })), ...(writeHtml ? [{ name: 'email.html', data: new Blob([result.html], { type: 'text/html' }) }] : [])];
     await writeFiles(folder, files);
-    useStore.getState().toast(`Exported email + ${images.length} images`, 'success');
+    const rentcafe = doc.email?.platform === 'rentcafe';
+    const copied = rentcafe && ready ? await copyToClipboard(result.html) : false;
+    useStore.getState().toast(writeHtml ? `Exported email + ${images.length} images` : `Exported ${images.length} images. The HTML needs picture addresses first.`, writeHtml ? 'success' : 'info');
     return {
+      ready,
+      ...(check.text ? { notReady: check.text, missingAddresses: check.missing } : {}),
       folder,
-      htmlFile: 'email.html',
+      htmlFile: writeHtml ? 'email.html' : null,
+      ...(!ready && writeHtml ? { draft: true } : {}),
       images: images.map((i) => i.fileName),
+      pictures: pictureList(sources, result.images),
       bytes: result.bytes,
       warnings: result.warnings,
       placeholders: result.placeholders,
       subject: doc.email?.subject ?? null,
       preheader: p.preheader ?? doc.email?.preheader ?? null,
+      platform: doc.email?.platform ?? null,
       ...(hosting ? { hosted: { uploaded: hosting.uploaded, reused: hosting.reused, urls: hosting.urls } } : {}),
-      note:
-        hosting || p.baseUrl || p.urls || !images.length || (doc.email?.hosting?.mode === 'base' && doc.email.hosting.baseUrl) || doc.email?.hosting?.mode === 'each'
-          ? undefined
-          : 'Image src attributes are bare file names. If WordPress is connected (the user connects it once in Export → Upload to WordPress), export again with host: "wordpress"; otherwise ask for the base URL the images were uploaded to and export with baseUrl.',
+      ...(rentcafe && ready ? { html: result.html, copiedToClipboard: copied, pasteSteps: RENTCAFE_STEPS, note: RENTCAFE_NOTE } : {}),
     };
   },
 };

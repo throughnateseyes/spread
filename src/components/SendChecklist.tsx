@@ -1,8 +1,12 @@
 import { useEffect, useState } from 'react';
 import { emailRootOf } from '../email/boards';
 import { sendChecks, type SendCheck, type SendCheckId } from '../email/checklist';
+import { startLiveCheck, useLiveCheck, type LiveGroup } from '../email/livecheck';
+import { native } from '../platform';
 import { useLayout, useStore } from '../store';
-import { IconCheck, IconWarning } from '../ui/icons';
+import { findNode } from '../tree';
+import type { Doc } from '../types';
+import { IconCheck, IconInfo, IconSpinner, IconWarning } from '../ui/icons';
 import { openLinkItem, revealLinkItem } from './LinkEditor';
 
 // The send checklist, pinned above the Design panel so it stays put whatever is selected.
@@ -70,6 +74,95 @@ export function SendChecklist() {
         <p className="send-detail">
           <strong>{shown.title}.</strong> {shown.detail}
         </p>
+      )}
+      <LiveCheck doc={doc} />
+    </div>
+  );
+}
+
+const GROUPS: { id: LiveGroup; label: string }[] = [
+  { id: 'pictures', label: 'Pictures' },
+  { id: 'links', label: 'Links' },
+  { id: 'shapes', label: 'Photo shapes' },
+];
+
+function goToLayer(id: string | null) {
+  const s = useStore.getState();
+  if (!id || !findNode(s.doc.nodes, id)) return;
+  s.select([id]);
+  window.dispatchEvent(new Event('spread:zoom-selection'));
+}
+
+/**
+ * The live check: loads every picture and link in the email, on demand only. Its findings stay
+ * until the board changes, since any edit could change what they say.
+ */
+function LiveCheck({ doc }: { doc: Doc }) {
+  const layout = useLayout();
+  const entry = useLiveCheck((s) => s.byBoard[doc.id]);
+  const running = !!entry?.progress;
+  const fresh = !!entry && entry.doc === doc;
+  const result = fresh ? entry.result : null;
+  const stale = !!entry?.result && !fresh && !running;
+  const toFix = result ? result.items.filter((i) => i.level === 'fix').length : 0;
+
+  const run = () => {
+    const root = emailRootOf(doc);
+    // Failures land in the store and show below.
+    if (root) startLiveCheck(doc, root, layout).catch(() => {});
+  };
+
+  return (
+    <div className="live-check">
+      <div className="live-head">
+        <button
+          className="live-run"
+          onClick={run}
+          disabled={running || !native}
+          title={native ? 'Loads every picture and link in the email, and checks each listing card against its page' : 'The live check needs the Spread desktop app'}
+        >
+          {running ? (
+            <>
+              <IconSpinner size={12} className="spin" />
+              {entry.progress!.total ? `Checking ${entry.progress!.done} of ${entry.progress!.total}…` : 'Checking…'}
+            </>
+          ) : result ? (
+            'Check again'
+          ) : (
+            'Live check'
+          )}
+        </button>
+        {result && !running ? (
+          <span className={toFix ? 'link-count warn' : 'send-ready'}>{toFix ? `${toFix} to fix` : 'All load'}</span>
+        ) : (
+          !running && <span className="live-hint">Loads every picture and link</span>
+        )}
+      </div>
+      {fresh && entry.error && !running && <p className="send-detail">{entry.error}.</p>}
+      {stale && <p className="send-detail">The board changed since the last live check.</p>}
+      {result && !running && (
+        <div className="live-results">
+          {GROUPS.map(({ id, label }) => {
+            const problems = result.items.filter((i) => i.group === id && i.level !== 'ok');
+            const level = problems.some((i) => i.level === 'fix') ? 'fix' : problems.length ? 'note' : 'ok';
+            return (
+              <div className="live-group" key={id}>
+                <div className={`live-sum ${level}`}>
+                  {level === 'ok' ? <IconCheck size={12} /> : level === 'fix' ? <IconWarning size={12} /> : <IconInfo size={12} />}
+                  <span>
+                    <strong>{label}</strong> {result.summary[id]}
+                  </span>
+                </div>
+                {problems.map((i, k) => (
+                  <button key={k} className={`live-item ${i.level}`} title={i.url} onClick={() => goToLayer(i.nodeId)}>
+                    <span className="live-name">{i.name}</span>
+                    <span className="live-text">{i.title}</span>
+                  </button>
+                ))}
+              </div>
+            );
+          })}
+        </div>
       )}
     </div>
   );

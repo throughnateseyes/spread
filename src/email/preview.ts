@@ -1,7 +1,7 @@
 import type { FrameNode, SceneNode } from '../types';
 import type { LayoutMap } from '../layout';
 import { findNode, walk } from '../tree';
-import { buildEmailHtml, defaultFontStack, fallbackStack, isWebSafe, parseNameTags, type EmailImage } from './html';
+import { buildEmailHtml, defaultFontStack, fallbackStack, isWebSafe, parseNameTags, type EmailImage, type TwoAcrossText } from './html';
 
 // The inbox preview: compiles an email the way one inbox setup would show it, measures the
 // result in a real browser layout, and turns that into a short list of things to check.
@@ -46,6 +46,7 @@ export function inboxHtml(src: InboxSource, view: InboxView, fontCss = ''): stri
     imageUrl: (id, file) => src.pictures[id] ?? src.imageUrl?.(id, file) ?? file,
     imagesOff: !view.images,
     fontStack: view.fonts === 'design' ? designStack : fallbackStack,
+    tagText: true,
   });
   return view.fonts === 'design' && fontCss ? html.replace('<style>', () => `<style>${fontCss}\n`) : html;
 }
@@ -67,10 +68,34 @@ export interface Measure {
   width: number;
   /** A few words from what runs off the edge, when something does ('' when no text is to blame). */
   overflow: string | null;
+  /** Lines each text runs to, by layer id (texts the compiler tagged with data-sid). */
+  lines?: Record<string, number>;
 }
 
 export function measureDoc(doc: Document): Omit<Measure, 'overflow'> {
   return { height: Math.ceil(doc.body.getBoundingClientRect().height), width: doc.documentElement.scrollWidth };
+}
+
+/**
+ * Counts the lines each tagged text really takes: the distinct line boxes its words sit on.
+ * A cell can be taller than its text (a row stretches its cells), so height alone can't tell.
+ */
+export function measureLines(doc: Document): Record<string, number> {
+  const out: Record<string, number> = {};
+  const range = doc.createRange();
+  for (const el of Array.from(doc.querySelectorAll<HTMLElement>('[data-sid]'))) {
+    range.selectNodeContents(el);
+    const rects = Array.from(range.getClientRects()).filter((r) => r.width > 0.5 && r.height > 0.5);
+    if (!rects.length) continue;
+    const lh = parseFloat(doc.defaultView?.getComputedStyle(el).lineHeight ?? '') || rects[0].height;
+    const tops: number[] = [];
+    for (const r of rects.sort((a, b) => a.top - b.top)) {
+      const mid = r.top + r.height / 2;
+      if (!tops.some((t) => Math.abs(t - mid) < lh / 2)) tops.push(mid);
+    }
+    out[el.dataset.sid!] = tops.length;
+  }
+  return out;
 }
 
 /** The text holding the page open: hiding it brings the width in the most. Everything past the edge stretches with it, so position alone can't tell. */
@@ -115,7 +140,8 @@ export function measureHtml(html: string, viewport: number): Promise<Measure> {
       await doc.fonts.ready;
       const m = measureDoc(doc);
       const overflow = m.width > viewport + 1 ? widestText(doc, viewport) : null;
-      done(() => resolve({ ...m, overflow }));
+      const lines = measureLines(doc);
+      done(() => resolve({ ...m, overflow, lines }));
     };
     frame.srcdoc = html;
     document.body.appendChild(frame);
@@ -148,7 +174,7 @@ export function firstWords(root: SceneNode, max = 90): string {
 export type CheckLevel = 'ok' | 'note' | 'fix';
 
 export interface InboxCheck {
-  id: 'phone' | 'fonts' | 'images' | 'row';
+  id: 'phone' | 'fonts' | 'images' | 'row' | 'wrap';
   level: CheckLevel;
   title: string;
   detail: string;
@@ -227,6 +253,47 @@ export function rowCheck(root: FrameNode, subject: string, preheader: string): I
   return { id: 'row', level: 'ok', title: 'Inbox line looks right', detail: 'Subject and preview text both fit.', view };
 }
 
+const LINE_WORDS = ['', 'one', 'two', 'three', 'four', 'five'];
+
+/**
+ * Text in a row of cards that stays side by side on phones gets about half of 375px there. A
+ * line that fits on desktop and breaks on a phone ("1050 Post / St") is worth knowing before it ships.
+ * Measured with the fallback fonts, which is what nearly everyone sees.
+ */
+export function wrapCheck(root: FrameNode, twoAcross: TwoAcrossText[], metrics: InboxMetrics): InboxCheck | null {
+  if (!twoAcross.length) return null;
+  const view: Partial<InboxView> = { device: 'mobile', fonts: 'fallback' };
+  const desk = metrics.desktop.fallback.lines ?? {};
+  const phone = metrics.mobile.fallback.lines ?? {};
+  const wraps = twoAcross
+    .map((t) => {
+      const n = findNode([root], t.id);
+      const words = n ? textIn(n) : '';
+      const d = desk[t.id] ?? 0;
+      const p = phone[t.id] ?? 0;
+      // Lines that already wrap on desktop are paragraphs; only short text breaking is news.
+      return n && words && d > 0 && p > d && (d === 1 || words.length <= 40) ? { ...t, words, lines: p } : null;
+    })
+    .filter((x): x is TwoAcrossText & { words: string; lines: number } => !!x);
+  if (!wraps.length) return { id: 'wrap', level: 'ok', title: 'Side-by-side rows fit a phone', detail: `Nothing in a two-across row wraps at ${PHONE_W}px.`, view };
+  const first = wraps[0];
+  const quote = `“${first.words.length > 40 ? first.words.slice(0, 40).trim() + '…' : first.words}”`;
+  const lines = LINE_WORDS[first.lines] ?? String(first.lines);
+  const others = wraps.length - 1;
+  const who = others ? `${quote} and ${others} other${others > 1 ? 's' : ''} wrap onto more lines` : `${quote} wraps onto ${lines} lines`;
+  const rows = new Set(wraps.map((w) => w.rowId)).size;
+  return {
+    id: 'wrap',
+    level: 'note',
+    title: 'Text wraps in a two-across row',
+    detail: `At phone width, ${who} in the two-across ${rows > 1 ? 'rows' : 'row'}. Stack ${rows > 1 ? 'these rows' : 'this row'} on phones or shorten the text.`,
+    view,
+    ids: wraps.map((w) => w.id),
+  };
+}
+
 export function inboxChecks(src: InboxSource, subject: string, images: EmailImage[], fonts: string[], metrics: InboxMetrics): InboxCheck[] {
-  return [rowCheck(src.root, subject, src.preheader), phoneCheck(metrics.mobile.fallback), fontsCheck(fonts, metrics), imagesCheck(src.root, images)];
+  const { twoAcross } = buildEmailHtml(src.root, src.layout, { title: '', imageUrl: (_id, f) => f });
+  const wrap = wrapCheck(src.root, twoAcross, metrics);
+  return [rowCheck(src.root, subject, src.preheader), phoneCheck(metrics.mobile.fallback), ...(wrap ? [wrap] : []), fontsCheck(fonts, metrics), imagesCheck(src.root, images)];
 }

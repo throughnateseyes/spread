@@ -1,4 +1,5 @@
 import { RepeatSection } from './RepeatDialog';
+import { openListingCards } from './ListingCardsDialog';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { MOD, useLayout, useStore } from '../store';
 import { absoluteBox, inAutoLayout, type LayoutMap } from '../layout';
@@ -19,6 +20,8 @@ import { fallbackStack, isWebSafe } from '../email/html';
 import { Tooltip } from '../ui/Tooltip';
 import { LastChange } from './HistoryTab';
 import { SendChecklist } from './SendChecklist';
+import { PictureAddressSection } from './PictureAddress';
+import { PhoneLayoutSection } from './PhoneLayoutSection';
 import {
   ICON_DENSE,
   IconAlignBottom,
@@ -243,6 +246,9 @@ function DocumentPanel() {
           <Button className="block" onClick={() => void window.dispatchEvent(new Event('spread:sections'))}>
             <IconPlus size={ICON_DENSE} /> Add section
           </Button>
+          <Button className="block" title="Fill the listing cards from the listing pages: price, address, details, link and photo" onClick={() => openListingCards()}>
+            Fill cards from listing links…
+          </Button>
         </Section>
       ) : (
       <Section title="Carousel">
@@ -462,6 +468,8 @@ function SelectionPanel({ sel }: { sel: SceneNode[] }) {
       {(type === 'rect' || type === 'ellipse') && <ShapeSection sel={sel} upd={upd} />}
       {type === 'frame' && <FrameSection sel={sel as FrameNode[]} upd={upd} />}
       {doc.kind === 'email' && <LinkSection sel={sel} upd={upd} />}
+      <PictureAddressSection sel={sel} />
+      {doc.kind === 'email' && <PhoneLayoutSection sel={sel} upd={upd} />}
       <AppearanceSection sel={sel} upd={upd} />
       <ShadowSection sel={sel} upd={upd} />
     </>
