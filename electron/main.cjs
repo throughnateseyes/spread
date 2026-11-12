@@ -412,6 +412,12 @@ ipcMain.handle('chat-answer', (_e, opts) => chat.answerQuestions(opts));
 ipcMain.handle('chat-login', guard(chat.login));
 ipcMain.handle('chat-design-docs', (_e, dir) => chat.designDocs(dir));
 
+// ---------- live send check ----------
+// Loads a picture or link from the email on demand (electron/livecheck.cjs), past CORS.
+
+const livecheck = require('./livecheck.cjs');
+ipcMain.handle('live-check-url', answer(livecheck.check));
+
 // ---------- automation bridge (local HTTP → renderer) ----------
 // Lets local tools (e.g. an MCP server for Claude Code) drive the app. Bound to 127.0.0.1,
 // guarded by a random bearer token written to bridge.json in the Spread folder, and refuses browser origins.

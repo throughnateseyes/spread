@@ -7,6 +7,7 @@ import { fontSwaps, inboxChecks, inboxHtml, inboxMetrics, measureHtml, viewWidth
 import { renderEmailImages } from './images';
 import { EMAIL_SECTIONS, EMAIL_TEMPLATES } from './templates';
 import { sendChecks } from './checklist';
+import { compactLive, startLiveCheck } from './livecheck';
 import { createEmailBoard, emailRootOf, insertEmailSection } from './boards';
 import { hostEmailImages } from './hosting';
 import { createFromTemplate, insertSavedSection, useLibrary } from '../library';
@@ -101,10 +102,13 @@ export const emailHandlers: Record<string, (p: Params) => Promise<unknown> | unk
   },
 
   /** The five things to get right before sending, as the strip in the app shows them. */
-  send_check() {
+  async send_check(p) {
     const { doc, root } = activeEmailRoot();
     const checks = sendChecks(doc, root, currentLayout());
-    return { ready: !checks.some((c) => c.level === 'fix'), toFix: checks.filter((c) => c.level === 'fix').length, checks: checks.map(({ label: _label, ...c }) => c) };
+    // live: also load every picture and link (the checklist's Live check), which takes a few seconds.
+    const live = p.live ? compactLive(await startLiveCheck(doc, root, currentLayout())) : undefined;
+    const toFix = checks.filter((c) => c.level === 'fix').length + (live?.problems.filter((x) => x.level === 'fix').length ?? 0);
+    return { ready: !toFix, toFix, checks: checks.map(({ label: _label, ...c }) => c), ...(live ? { live } : {}) };
   },
 
   /** The compiled email as an inbox shows it: checks always, pictures when the desktop app can take them. */

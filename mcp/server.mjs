@@ -890,8 +890,8 @@ tool(
   'spread_send_check',
   {
     title: 'Check an email is ready to send',
-    description: "The five things that must be right before an email goes out, the same list the user sees pinned in the app: subject (and preview text), unsubscribe, mailing address, links and alt text. Returns { ready, toFix, checks: [{ id, level: 'ok'|'note'|'fix', title, detail, ids }] }, where ids are the layers each check is about. ready means nothing is at 'fix'. The address check reads the footer, or a layer named 'Mailing address'. Read-only.",
-    inputSchema: { boardId },
+    description: "The five things that must be right before an email goes out, the same list the user sees pinned in the app: subject (and preview text), unsubscribe, mailing address, links and alt text. Returns { ready, toFix, checks: [{ id, level: 'ok'|'note'|'fix', title, detail, ids }] }, where ids are the layers each check is about. ready means nothing is at 'fix'. The address check reads the footer, or a layer named 'Mailing address'. live: true also runs the Live check the user can run from the checklist (desktop app only, takes a few seconds): loads every picture address in the compiled email (must answer 200 with an image), opens every web link, compares each listing card's unit and street numbers with its linked page (flags only real conflicts, e.g. card says Unit 403, page says Unit 203), and flags photos cut down a lot by their frame or hosted at a different shape than their frame. Adds live: { ready, summary: { pictures, links, shapes }, counts, problems: [{ group: 'pictures'|'links'|'shapes', level: 'note'|'fix', nodeId, name, title, url? }] }, and its 'fix' problems count toward toFix. Run it right before export or send, not after every edit. Read-only.",
+    inputSchema: { boardId, live: z.boolean().optional().describe('Also load every picture and link and compare listing cards with their pages (a few seconds).') },
     annotations: { readOnlyHint: true },
   },
   passthrough('send_check'),
