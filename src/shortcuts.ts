@@ -8,7 +8,7 @@ import { openSwitcher } from './components/Switcher';
 import { pasteClipboard } from './clipboard';
 import { toggleBoldSelection, toggleStyleSelection } from './fonts';
 import type { Tool } from './types';
-import { isElectron } from './platform';
+import { isElectron, native } from './platform';
 import { toggleChat } from './components/ClaudePanel';
 
 // Global Figma-style keyboard shortcuts. Copy/cut/paste are DOM clipboard events (clipboard.ts).
@@ -30,6 +30,7 @@ export const SHORTCUTS: [string, string][] = [
   ['Double-click text', 'Edit text'],
   ['Ctrl+B / I / U', 'Bold / italic / underline: the highlighted words while editing text, else the whole layer'],
   ['Ctrl+C / X / V / A / Z (editing text)', 'Copy, cut, paste, select all and undo inside the text'],
+  ['Ctrl+A (in the Claude chat)', 'Select the whole conversation, to copy it'],
   ['Double-click photo / Enter', 'Crop (drag to pan, scroll to zoom)'],
   ['Double-click frame', 'Select child'],
   ['Ctrl+click', 'Deep select'],
@@ -54,7 +55,7 @@ export const SHORTCUTS: [string, string][] = [
   ['Ctrl+] / Ctrl+[', 'Bring forward / send backward (+Shift: to front/back)'],
   ["Ctrl+'", 'Toggle layout grid'],
   ['Ctrl+Shift+H / L', 'Hide / lock'],
-  ['Ctrl+Z / Ctrl+Shift+Z', 'Undo / redo'],
+  ['Ctrl+Z / Ctrl+Shift+Z or Ctrl+Y', 'Undo / redo'],
   ['Ctrl+S / Ctrl+Shift+S / Ctrl+O', 'Save / Save as / Open'],
   ['Ctrl+Shift+E', 'Export'],
   ['Ctrl+J', 'Show / hide the Claude panel'],
@@ -63,6 +64,48 @@ export const SHORTCUTS: [string, string][] = [
   ['Esc', 'Deselect / exit crop or text'],
   ['?', 'This list'],
 ];
+
+/** Read-only text where ⌘A means its words: the Claude transcript, layout checks and the like. */
+const SCOPE = '[data-select-scope], .lint-list, .em-warnings, .send-detail';
+
+function selectScope(): HTMLElement | null {
+  const a = document.activeElement as HTMLElement | null;
+  const focused = a?.closest?.<HTMLElement>(SCOPE);
+  if (focused) return focused;
+  // Text highlighted with the mouse somewhere that doesn't take focus (a dialog's list, say).
+  const sel = window.getSelection();
+  const at = sel && !sel.isCollapsed ? sel.anchorNode : null;
+  const el = at ? (at.nodeType === Node.ELEMENT_NODE ? (at as Element) : at.parentElement) : null;
+  return el?.closest<HTMLElement>(SCOPE) ?? null;
+}
+
+/**
+ * Select all, undo and redo, for the keys and for the macOS Edit menu. A focused field gets the
+ * browser's own (inside a text layer that's just its words); read-only text marked as a scope gets
+ * its words selected; otherwise they mean the canvas: every layer beside the selection (or on the
+ * board), and the design's history. In a dialog or on the home screen they never touch the canvas.
+ */
+export function editCommand(cmd: 'undo' | 'redo' | 'selectAll') {
+  const s = useStore.getState();
+  const a = document.activeElement as HTMLElement | null;
+  if (isTyping()) {
+    if (a?.tagName !== 'SELECT') document.execCommand(cmd);
+    return;
+  }
+  if (cmd === 'selectAll') {
+    const scope = selectScope();
+    if (scope) return void window.getSelection()?.selectAllChildren(scope);
+  }
+  if (s.editingTextId || s.modal || s.homeOpen || a?.closest?.('[aria-modal="true"]')) return;
+  if (cmd === 'undo') return s.undo();
+  if (cmd === 'redo') return s.redo();
+  // In the Claude panel, select all is about its text, never the layers.
+  if (a?.closest?.('.panel.chat')) return;
+  // Select siblings of the current selection, else all top-level layers on the active board.
+  window.getSelection()?.removeAllRanges();
+  const p = s.selection[0] ? findParent(s.doc.nodes, s.selection[0]) : null;
+  s.select((p ? p.children : s.doc.nodes).filter((n) => !n.locked && n.visible).map((n) => n.id));
+}
 
 export function installShortcuts() {
   const onKey = (e: KeyboardEvent) => {
@@ -121,25 +164,15 @@ export function installShortcuts() {
       if (done) e.preventDefault();
       return;
     }
-    // macOS only gives these to text fields through a menu, and the app menu leaves them out.
-    if (mod && isTyping() && document.activeElement?.tagName !== 'SELECT' && (k === 'a' || k === 'z')) {
+    // Select all, undo and redo belong to whatever has focus (see editCommand). Ctrl+Y is redo too.
+    if (mod && !e.altKey && (k === 'a' || k === 'z' || (k === 'y' && !e.shiftKey))) {
       e.preventDefault();
-      document.execCommand(k === 'a' ? 'selectAll' : e.shiftKey ? 'redo' : 'undo');
+      editCommand(k === 'a' ? 'selectAll' : k === 'y' || e.shiftKey ? 'redo' : 'undo');
       return;
     }
     if (isTyping() || s.editingTextId) return;
     if (s.modal || s.homeOpen) return;
 
-    if (mod && k === 'z') {
-      e.preventDefault();
-      e.shiftKey ? s.redo() : s.undo();
-      return;
-    }
-    if (mod && k === 'y') {
-      e.preventDefault();
-      s.redo();
-      return;
-    }
     if (mod && e.shiftKey && k === 'e') {
       e.preventDefault();
       s.set({ modal: 'export' });
@@ -148,13 +181,6 @@ export function installShortcuts() {
     if (mod && e.shiftKey && k === 'v') {
       // Paste in place. Chromium may also fire a paste event for this; clipboard.ts ignores it.
       if (pasteClipboard(undefined, { inPlace: true })) e.preventDefault();
-      return;
-    }
-    if (mod && k === 'a') {
-      e.preventDefault();
-      // Select siblings of the current selection, else all top-level nodes.
-      const p = s.selection[0] ? findParent(s.doc.nodes, s.selection[0]) : null;
-      s.select((p ? p.children : s.doc.nodes).filter((n) => !n.locked && n.visible).map((n) => n.id));
       return;
     }
     if (mod && e.altKey && k === 'd') {
@@ -327,5 +353,9 @@ export function installShortcuts() {
     }
   };
   window.addEventListener('keydown', onKey);
-  return () => window.removeEventListener('keydown', onKey);
+  const offMenu = native?.onEditCommand?.(editCommand);
+  return () => {
+    window.removeEventListener('keydown', onKey);
+    offMenu?.();
+  };
 }

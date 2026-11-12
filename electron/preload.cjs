@@ -74,6 +74,11 @@ contextBridge.exposeInMainWorld('spreadNative', {
     ipcRenderer.on('open-path', listener);
     return () => ipcRenderer.removeListener('open-path', listener);
   },
+  onEditCommand: (cb) => {
+    const listener = (_e, cmd) => cb(cmd);
+    ipcRenderer.on('edit-command', listener);
+    return () => ipcRenderer.removeListener('edit-command', listener);
+  },
   onAutomationRequest: (cb) => {
     const listener = (_e, req) => cb(req);
     ipcRenderer.on('automation-request', listener);

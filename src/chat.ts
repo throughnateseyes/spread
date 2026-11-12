@@ -8,6 +8,7 @@ import { absoluteBoxes } from './render';
 import { currentLayout, useStore } from './store';
 import { patchComment, pinLabel, pinnedNode, pinPoint, reconcileNotes } from './comments';
 import type { CanvasComment, SceneNode } from './types';
+import type { ChatImage } from './chatImages';
 
 // The Claude side panel's renderer half: which conversation belongs to the open project, and the
 // <spread-context> block that rides along with every message so Claude always knows what the user
@@ -185,13 +186,17 @@ export async function buildContext(files: string[], note?: CanvasComment) {
   return `<spread-context>\n${lines.join('\n')}\n</spread-context>`;
 }
 
-/** Sends a message with the current canvas context. */
-export async function sendChat(text: string, files: string[] = []) {
+/** Sends a message with the current canvas context, and any pictures pasted or dropped into it. */
+export async function sendChat(text: string, files: string[] = [], images: ChatImage[] = []) {
   if (!native) return;
   const chips = contextChips();
-  const label = [chips.row, chips.selection, chips.photos, ...files.map((f) => f.split(/[\\/]/).pop())].filter(Boolean).join(' · ');
-  const content = `${await buildContext(files)}\n\n${text}`;
-  await native.chatSend({ key: currentChatKey(), cwd: chatCwd(), text, content, label });
+  const pics = images.length ? `${images.length} picture${images.length > 1 ? 's' : ''}` : null;
+  const label = [chips.row, chips.selection, chips.photos, pics, ...files.map((f) => f.split(/[\\/]/).pop())].filter(Boolean).join(' · ');
+  // A picture that came from the Finder also goes by its path, so Claude can place it on the canvas.
+  const onDisk = images.flatMap((im, i) => (im.path && !files.includes(im.path) ? [`${im.path} (attached picture ${i + 1})`] : []));
+  const content = `${await buildContext([...files, ...onDisk])}\n\n${text || (images.length ? '(See the attached picture.)' : '')}`;
+  const payload = images.map(({ mediaType, data, thumb, name, width, height }) => ({ mediaType, data, thumb, name, width, height }));
+  await native.chatSend({ key: currentChatKey(), cwd: chatCwd(), text, content, label, images: payload });
 }
 
 /** Sends a canvas comment, down the same path as the composer but with its pin's layer attached. */

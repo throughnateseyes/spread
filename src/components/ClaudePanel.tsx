@@ -1,11 +1,12 @@
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { contextChips, currentChatKey, sendChat, useChat } from '../chat';
-import { native, type ChatItem, type ChatQuestion } from '../platform';
+import { native, type ChatItem, type ChatQuestion, type ChatThumb } from '../platform';
+import { isChatImage, prepareChatImage, type ChatImage } from '../chatImages';
 import { MOD, useStore } from '../store';
 import { useActiveBrand } from '../brand';
 import { Button, IconButton } from '../ui/controls';
 import { Menu, useMenuButton, type MenuItem } from '../ui/Menu';
-import { ICON_DENSE, IconArrowUp, IconAttach, IconCheck, IconClose, IconComment, IconFile, IconMore, IconNewChat, IconSparkle, IconSpinner, IconStop, IconWarning } from '../ui/icons';
+import { ICON_DENSE, IconArrowUp, IconAttach, IconCheck, IconClose, IconComment, IconFile, IconImage, IconMore, IconNewChat, IconSparkle, IconSpinner, IconStop, IconWarning } from '../ui/icons';
 import './claude-panel.css';
 
 // The Claude side panel: a conversation with the user's own Claude Code, docked beside the canvas.
@@ -35,6 +36,11 @@ export function toggleChat(open = !useStore.getState().chatOpen, focus = true) {
   if (open && focus) requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>('.chat-input')?.focus());
 }
 
+/** Pictures one message can carry (Claude reads up to 100; more than a handful is slow and costly). */
+const MAX_PICTURES = 10;
+
+const focusInput = () => requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>('.chat-input')?.focus());
+
 export default function ClaudePanel() {
   const state = useChat((s) => s.state);
   const items = state?.items ?? [];
@@ -44,7 +50,10 @@ export default function ClaudePanel() {
   const pinned = useRef(true);
   const [draft, setDraft] = useState('');
   const [files, setFiles] = useState<string[]>([]);
+  const [images, setImages] = useState<ChatImage[]>([]);
+  const [preparing, setPreparing] = useState(0);
   const [dragging, setDragging] = useState(false);
+  const toast = useStore((s) => s.toast);
 
   // Stay at the bottom while Claude streams, unless the user scrolled up to read.
   useLayoutEffect(() => {
@@ -58,11 +67,14 @@ export default function ClaudePanel() {
 
   const send = (text = draft) => {
     const t = text.trim();
-    if (!t) return;
+    // Starter flows and ideas send their own text; the box sends what's in it, pictures included.
+    const pics = text === draft ? images : [];
+    if ((!t && !pics.length) || (text === draft && preparing)) return;
     pinned.current = true;
-    void sendChat(t, files);
+    void sendChat(t, files, pics);
     setDraft('');
     setFiles([]);
+    if (pics.length) setImages([]);
   };
 
   // Whatever Claude hadn't read yet comes back to the box, so Stop never loses it. Notes stay on
@@ -73,26 +85,58 @@ export default function ClaudePanel() {
     void native?.chatStop(currentChatKey());
   };
 
+  // Pictures ride along as images Claude can see (a Finder file also keeps its path, so Claude can
+  // place it on the canvas). Anything else is attached by its path for Claude to open.
   const addFiles = (list: FileList | File[]) => {
     if (!native) return;
-    const paths = Array.from(list)
-      .map((f) => native!.pathForFile(f))
-      .filter(Boolean);
+    const all = Array.from(list);
+    const room = Math.max(0, MAX_PICTURES - images.length - preparing);
+    const pics = all.filter(isChatImage).slice(0, room);
+    const rest = all.filter((f) => !pics.includes(f));
+    const paths = rest.map((f) => native!.pathForFile(f)).filter(Boolean);
+    if (rest.some((f) => isChatImage(f) && !native!.pathForFile(f))) toast(`Up to ${MAX_PICTURES} pictures per message`);
     if (paths.length) setFiles((cur) => [...new Set([...cur, ...paths])]);
+    if (!pics.length) return;
+    setPreparing((n) => n + pics.length);
+    for (const f of pics) {
+      const path = native.pathForFile(f) || undefined;
+      void prepareChatImage(f, f.name || 'Pasted picture', path).then((im) => {
+        setPreparing((n) => n - 1);
+        if (im) setImages((cur) => (path && cur.some((x) => x.path === path) ? cur : [...cur, im]));
+        else toast(`Couldn’t read ${f.name || 'that picture'}`, 'error');
+      });
+    }
   };
 
-  // Once the transcript has focus, ⌘A means its text, not the layers on the canvas.
-  const selectTranscript = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== 'a') return;
-    e.preventDefault();
-    e.stopPropagation();
-    window.getSelection()?.selectAllChildren(e.currentTarget);
+  // ⌘V of a screenshot, a copied picture or a Finder file attaches it. Text pastes as text; pasted
+  // outside the box (into the transcript, say), it goes into the box.
+  const onPaste = (e: React.ClipboardEvent) => {
+    const dt = e.clipboardData;
+    const pasted = Array.from(dt.files);
+    const text = dt.getData('text/plain');
+    const fromDisk = pasted.some((f) => native?.pathForFile(f));
+    // A spreadsheet or a web page copies its words as a picture too: then the words win.
+    if (pasted.length && (fromDisk || !text.trim())) {
+      e.preventDefault();
+      addFiles(pasted);
+      focusInput();
+      return;
+    }
+    const t = e.target as HTMLElement;
+    if (text && !t.closest('textarea, input, [contenteditable]')) {
+      e.preventDefault();
+      setDraft(draft ? `${draft}${/\s$/.test(draft) ? '' : ' '}${text}` : text);
+      focusInput();
+    }
   };
 
   const onDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setDragging(false);
-    if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files);
+    if (e.dataTransfer.files.length) {
+      addFiles(e.dataTransfer.files);
+      focusInput();
+    }
   };
 
   return (
@@ -108,13 +152,28 @@ export default function ClaudePanel() {
         if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragging(false);
       }}
       onDrop={onDrop}
+      onPaste={onPaste}
     >
       <ResizeHandle />
       <Header empty={!items.length} working={working} />
-      <div className="chat-scroll" ref={scroller} tabIndex={-1} onScroll={onScroll} onKeyDown={selectTranscript}>
+      {/* Focusable and a select-all scope: once clicked, ⌘A selects the conversation (see editCommand). */}
+      <div className="chat-scroll" ref={scroller} tabIndex={-1} onScroll={onScroll} data-select-scope>
         {items.length ? <Transcript items={items} working={working} /> : <EmptyState onPick={(t) => setDraft(t)} onStart={(t) => send(t)} />}
       </div>
-      <Composer draft={draft} setDraft={setDraft} files={files} setFiles={setFiles} working={working} queued={queued} onSend={() => send()} onStop={stop} onAttach={addFiles} />
+      <Composer
+        draft={draft}
+        setDraft={setDraft}
+        files={files}
+        setFiles={setFiles}
+        images={images}
+        setImages={setImages}
+        preparing={preparing}
+        working={working}
+        queued={queued}
+        onSend={() => send()}
+        onStop={stop}
+        onAttach={addFiles}
+      />
     </aside>
   );
 }
@@ -217,7 +276,8 @@ function Item({ item }: { item: ChatItem }) {
     case 'user':
       return (
         <div className="chat-user">
-          <div className="chat-bubble">{item.text}</div>
+          {item.images?.length ? <Thumbs images={item.images} /> : null}
+          {item.text && <div className="chat-bubble">{item.text}</div>}
           {item.label && <div className="chat-ctx">{item.label}</div>}
         </div>
       );
@@ -232,6 +292,23 @@ function Item({ item }: { item: ChatItem }) {
     default:
       return null;
   }
+}
+
+/** Pictures sent with a message, as saved: thumbnails only. */
+function Thumbs({ images }: { images: ChatThumb[] }) {
+  return (
+    <div className="chat-pics sent">
+      {images.map((im, i) =>
+        im.thumb ? (
+          <img key={i} className="chat-pic" src={im.thumb} alt={im.name} title={im.name} draggable={false} />
+        ) : (
+          <span key={i} className="chat-pic missing" title={im.name}>
+            <IconImage size={16} />
+          </span>
+        ),
+      )}
+    </div>
+  );
 }
 
 function Steps({ items, live }: { items: Extract<ChatItem, { kind: 'tool' }>[]; live: boolean }) {
@@ -446,6 +523,9 @@ function Composer({
   setDraft,
   files,
   setFiles,
+  images,
+  setImages,
+  preparing,
   working,
   queued,
   onSend,
@@ -456,8 +536,11 @@ function Composer({
   setDraft: (t: string) => void;
   files: string[];
   setFiles: (f: string[]) => void;
+  images: ChatImage[];
+  setImages: (f: ChatImage[]) => void;
+  preparing: number;
   working: boolean;
-  queued: { id: string; text: string; noteId?: string }[];
+  queued: { id: string; text: string; noteId?: string; images?: ChatThumb[] }[];
   onSend: () => void;
   onStop: () => void;
   onAttach: (f: FileList) => void;
@@ -488,6 +571,7 @@ function Composer({
             <div key={q.id} className="chat-queued">
               {q.noteId && <IconComment size={12} className="chat-queued-note" aria-label="Canvas note" />}
               {q.text}
+              {q.images?.length ? <span className="muted">{`${q.text ? ' · ' : ''}${q.images.length} picture${q.images.length > 1 ? 's' : ''}`}</span> : null}
             </div>
           ))}
         </div>
@@ -498,6 +582,23 @@ function Composer({
         {chips.photos && <span className="chat-chip on">{chips.photos}</span>}
         <span className="chat-chip">{chips.brand}</span>
       </div>
+      {(images.length > 0 || preparing > 0) && (
+        <div className="chat-pics" aria-label="Pictures to send">
+          {images.map((im) => (
+            <span key={im.id} className="chat-pic-wrap" title={`${im.name} · ${im.width}×${im.height}`}>
+              <img className="chat-pic" src={im.thumb} alt={im.name} draggable={false} />
+              <button aria-label={`Remove ${im.name}`} onClick={() => setImages(images.filter((x) => x.id !== im.id))}>
+                <IconClose size={10} />
+              </button>
+            </span>
+          ))}
+          {Array.from({ length: preparing }, (_, i) => (
+            <span key={`p${i}`} className="chat-pic missing" aria-label="Getting the picture ready">
+              <IconSpinner size={14} className="spin" />
+            </span>
+          ))}
+        </div>
+      )}
       {files.length > 0 && (
         <div className="chat-files">
           {files.map((f) => (
@@ -515,7 +616,7 @@ function Composer({
           ref={input}
           className="chat-input"
           rows={1}
-          placeholder={working ? 'Add to this while Claude works…' : 'Ask Claude to design, refine or critique…'}
+          placeholder={working ? 'Add to this while Claude works…' : 'Ask Claude to design, refine or critique. Paste or drop pictures to show it.'}
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {
@@ -527,7 +628,7 @@ function Composer({
           }}
         />
         <div className="chat-box-row">
-          <IconButton title="Attach files" className="small" onClick={() => picker.current?.click()}>
+          <IconButton title="Attach files or pictures" className="small" onClick={() => picker.current?.click()}>
             <IconAttach size={ICON_DENSE} />
           </IconButton>
           <input
@@ -546,8 +647,8 @@ function Composer({
               <IconStop size={12} weight="fill" />
             </button>
           )}
-          {(!working || draft.trim()) && (
-            <button className="chat-send" aria-label="Send" title="Send (Enter)" disabled={!draft.trim()} onClick={onSend}>
+          {(!working || draft.trim() || images.length > 0) && (
+            <button className="chat-send" aria-label="Send" title={preparing ? 'Getting the pictures ready…' : 'Send (Enter)'} disabled={(!draft.trim() && !images.length) || preparing > 0} onClick={onSend}>
               <IconArrowUp size={14} weight="bold" />
             </button>
           )}

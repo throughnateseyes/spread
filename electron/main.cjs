@@ -43,11 +43,28 @@ function buildMenu() {
     Menu.setApplicationMenu(null);
     return;
   }
-  // Undo/redo/select-all are deliberately absent: the renderer handles those keys itself.
+  // macOS gives text fields ⌘X/C/V/A/Z only through the Edit menu. Cut, copy and paste are the
+  // system's own (the renderer's copy/paste listeners decide between text and layers). Undo, redo and
+  // select all go to the renderer, which keeps them for a focused field and otherwise means the
+  // canvas (layers, history). The renderer sees the keys first and handles them there, so these
+  // items only run from a mouse click or when the page leaves a key alone.
+  const edit = (cmd) => (_item, w) => (w || win)?.webContents.send('edit-command', cmd);
   Menu.setApplicationMenu(
     Menu.buildFromTemplate([
       { label: app.name, submenu: [{ role: 'about' }, { type: 'separator' }, { role: 'hide' }, { role: 'hideOthers' }, { type: 'separator' }, { role: 'quit' }] },
-      { label: 'Edit', submenu: [{ role: 'cut' }, { role: 'copy' }, { role: 'paste' }] },
+      {
+        label: 'Edit',
+        submenu: [
+          { label: 'Undo', accelerator: 'CmdOrCtrl+Z', click: edit('undo') },
+          { label: 'Redo', accelerator: 'Shift+CmdOrCtrl+Z', click: edit('redo') },
+          { type: 'separator' },
+          { role: 'cut' },
+          { role: 'copy' },
+          { role: 'paste' },
+          { role: 'pasteAndMatchStyle' },
+          { label: 'Select All', accelerator: 'CmdOrCtrl+A', click: edit('selectAll') },
+        ],
+      },
       // ⌘W closes the project tab in the renderer, so the window takes ⇧⌘W.
       { label: 'Window', submenu: [{ role: 'minimize' }, { role: 'close', accelerator: 'Shift+CmdOrCtrl+W' }] },
     ]),

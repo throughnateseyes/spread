@@ -1,6 +1,7 @@
 import { isTyping } from './typing';
 import { useStore, currentLayout, activeOrigin } from './store';
-import { cloneWithNewIds, collectAssetIds, findNode, makeText, pathTo } from './tree';
+import { cloneWithNewIds, collectAssetIds, findNode, makeText, pathTo, walk } from './tree';
+import { getAsset } from './assets';
 import { absoluteBox } from './layout';
 import { importFiles } from './importer';
 import { adoptTokens, carriedBy, type CarriedTokens } from './tokens';
@@ -8,9 +9,18 @@ import type { AssetMeta, SceneNode } from './types';
 
 // Internal clipboard for nodes (with absolute positions so paste can land anywhere),
 // plus OS clipboard integration: pasted images import, pasted text becomes a text layer.
+//
+// Copying layers also puts them on the system clipboard: as Spread's own format (so pasting works in
+// another project, or after Spread restarts) and as plain text (the words of any text layers, so
+// pasting into the Claude chat, a field or another app gives the words rather than gibberish).
 
+/** What older versions put on the clipboard; still recognised when pasting. */
 const MARKER = '⁣spread-nodes';
-let clip: { nodes: SceneNode[]; abs: { x: number; y: number }[]; assets: AssetMeta[]; tokens: CarriedTokens } | null = null;
+const MIME = 'application/x-spread-nodes';
+type Clip = { nodes: SceneNode[]; abs: { x: number; y: number }[]; assets: AssetMeta[]; tokens: CarriedTokens };
+let clip: Clip | null = null;
+/** The system clipboard copy of `clip`, to tell our own copy apart from one made in another session. */
+let clipJson = '';
 
 /** Photos the clipboard still needs after the project they came from closes. */
 export const clipAssetIds = () => clip?.assets.map((a) => a.id) ?? [];
@@ -36,9 +46,57 @@ export function copySelection() {
   if (!nodes.length) return false;
   const used = collectAssetIds(nodes);
   clip = { nodes, abs, assets: Object.values(s.doc.assets).filter((a) => used.has(a.id)), tokens: carriedBy(s.project, nodes) };
+  clipJson = JSON.stringify({ v: 1, ...clip });
   cascade = { slide: -1, n: 0 };
-  navigator.clipboard?.writeText(MARKER).catch(() => {});
   return true;
+}
+
+/** The words in the copied layers, top to bottom as they were selected. */
+function clipText(c: Clip) {
+  const words: string[] = [];
+  walk(c.nodes, (n) => {
+    if (n.type === 'text' && n.visible && n.text.trim()) words.push(n.text);
+  });
+  return words.join('\n\n');
+}
+
+function putOnClipboard(dt: DataTransfer | null) {
+  if (!dt || !clip) return;
+  dt.setData(MIME, clipJson);
+  const text = clipText(clip);
+  if (text) dt.setData('text/plain', text);
+}
+
+let forceCopy = false;
+
+/** Copy from a menu: goes through a real copy event so the system clipboard gets the layers too. */
+export function copyLayers() {
+  forceCopy = true;
+  let ok = false;
+  try {
+    ok = document.execCommand('copy');
+  } catch {
+    ok = false;
+  } finally {
+    forceCopy = false;
+  }
+  if (!ok && copySelection() && clip) navigator.clipboard?.writeText(clipText(clip)).catch(() => {});
+}
+
+/** Layers copied in another session (or Spread before a restart). Photos it can't find paste as empty frames. */
+function parseClip(raw: string): Clip | null {
+  try {
+    const c = JSON.parse(raw) as Clip & { v?: number };
+    if (!Array.isArray(c.nodes) || !Array.isArray(c.abs) || c.nodes.length !== c.abs.length) return null;
+    const doc = useStore.getState().doc;
+    const have = (id: string) => !!doc.assets[id] || !!getAsset(id);
+    walk(c.nodes, (n) => {
+      if (n.type === 'image' && n.assetId && !have(n.assetId)) n.assetId = null;
+    });
+    return { nodes: c.nodes, abs: c.abs, assets: (c.assets ?? []).filter((a) => have(a.id)), tokens: c.tokens ?? {} };
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -49,8 +107,9 @@ export function copySelection() {
  */
 let pastedInPlaceAt = 0;
 
-export function pasteClipboard(at?: { x: number; y: number }, opts: { inPlace?: boolean } = {}) {
-  if (!clip) return false;
+export function pasteClipboard(at?: { x: number; y: number }, opts: { inPlace?: boolean } = {}, from: Clip | null = clip) {
+  if (!from) return false;
+  const clip = from;
   if (opts.inPlace) pastedInPlaceAt = Date.now();
   const s = useStore.getState();
   // Copied in another project tab: the photos join this project too, so they save with it.
@@ -87,9 +146,16 @@ export function pasteClipboard(at?: { x: number; y: number }, opts: { inPlace?: 
   return true;
 }
 
-/** True when copy and paste belong to text, like a field or words selected in the Claude chat. */
+/**
+ * True when copy, cut and paste belong to text, not layers: a field, words highlighted anywhere, the
+ * Claude panel (it takes pasted pictures itself), a dialog or the home screen. Cutting there must
+ * never delete layers on the canvas behind it.
+ */
 function onText() {
-  if (useStore.getState().homeOpen) return true;
+  const s = useStore.getState();
+  if (forceCopy) return false;
+  if (s.homeOpen || s.modal) return true;
+  if ((document.activeElement as HTMLElement | null)?.closest?.('.panel.chat, [aria-modal="true"]')) return true;
   const sel = window.getSelection();
   return isTyping() || (!!sel && !sel.isCollapsed);
 }
@@ -98,14 +164,14 @@ export function installClipboard() {
   const onCopy = (e: ClipboardEvent) => {
     if (onText()) return;
     if (copySelection()) {
-      e.clipboardData?.setData('text/plain', MARKER);
+      putOnClipboard(e.clipboardData);
       e.preventDefault();
     }
   };
   const onCut = (e: ClipboardEvent) => {
     if (onText()) return;
     if (copySelection()) {
-      e.clipboardData?.setData('text/plain', MARKER);
+      putOnClipboard(e.clipboardData);
       e.preventDefault();
       useStore.getState().deleteSelection();
     }
@@ -121,11 +187,12 @@ export function installClipboard() {
       return;
     }
     const text = dt.getData('text/plain');
-    if (text === MARKER || (!text && clip)) {
+    const raw = dt.getData(MIME);
+    if (raw || text === MARKER || (!text && clip)) {
       e.preventDefault();
       // ⌘⇧V already pasted in place from the keydown.
       if (Date.now() - pastedInPlaceAt < 300) return;
-      pasteClipboard();
+      pasteClipboard(undefined, {}, !raw || raw === clipJson ? clip : parseClip(raw));
       return;
     }
     if (text.trim()) {
@@ -137,7 +204,15 @@ export function installClipboard() {
   const onPointer = (e: PointerEvent) => {
     pointer = (e.target as HTMLElement | null)?.closest?.('.canvas-wrap') ? { x: e.clientX, y: e.clientY } : null;
   };
+  // Clicking the canvas leaves words highlighted elsewhere (the chat, say) highlighted, and then ⌘C
+  // would copy them instead of the layers just clicked. A click on the canvas lets go of them.
+  const onDown = (e: PointerEvent) => {
+    if (!(e.target as HTMLElement | null)?.closest?.('.konvajs-content')) return;
+    const sel = window.getSelection();
+    if (sel && !sel.isCollapsed) sel.removeAllRanges();
+  };
   window.addEventListener('pointermove', onPointer, { passive: true });
+  window.addEventListener('pointerdown', onDown, true);
   document.addEventListener('copy', onCopy);
   document.addEventListener('cut', onCut);
   document.addEventListener('paste', onPaste);
@@ -146,6 +221,7 @@ export function installClipboard() {
     document.removeEventListener('cut', onCut);
     document.removeEventListener('paste', onPaste);
     window.removeEventListener('pointermove', onPointer);
+    window.removeEventListener('pointerdown', onDown, true);
   };
 }
 

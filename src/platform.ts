@@ -28,9 +28,23 @@ export interface ClaudeStatus {
   lastClient: { name: string; at: number } | null;
 }
 
+/** A picture sent with a message, as the transcript keeps it: a small thumbnail, never the full image. */
+export interface ChatThumb {
+  thumb: string;
+  name: string;
+  width: number;
+  height: number;
+}
+
+/** A picture on its way to Claude Code: base64 for an image content block, plus its thumbnail. */
+export interface ChatImagePayload extends ChatThumb {
+  mediaType: string;
+  data: string;
+}
+
 /** One row of the Claude panel's transcript (built by electron/chat.cjs). */
 export type ChatItem =
-  | { id: string; at: number; kind: 'user'; text: string; label: string | null }
+  | { id: string; at: number; kind: 'user'; text: string; label: string | null; images?: ChatThumb[] }
   | { id: string; at: number; kind: 'text'; text: string }
   | { id: string; at: number; kind: 'tool'; toolId: string; name: string; label: string; detail?: string; status: 'running' | 'done' | 'error' | 'stopped'; error?: string }
   | { id: string; at: number; kind: 'approval'; requestId: string; name: string; label: string; detail?: string; preview: string; reason: string | null; status: 'pending' | 'allowed' | 'denied' | 'expired' }
@@ -49,7 +63,7 @@ export interface ChatState {
   key: string;
   items: ChatItem[];
   /** Sent while Claude was working, and not read yet. */
-  queued: { id: string; text: string; noteId?: string }[];
+  queued: { id: string; text: string; noteId?: string; images?: ChatThumb[] }[];
   status: 'idle' | 'working';
   hasSession: boolean;
   /** Where each canvas comment sent in this chat has got to, by comment id. */
@@ -162,7 +176,7 @@ export interface SpreadNative {
   chatOpen(key: string): Promise<ChatState>;
   /** text is what the transcript shows; content is what Claude gets (with the <spread-context> block). */
   /** noteId: the message is a canvas comment, and its pin follows it through the chat. */
-  chatSend(opts: { key: string; cwd?: string; text: string; content: string; label?: string; noteId?: string }): Promise<void>;
+  chatSend(opts: { key: string; cwd?: string; text: string; content: string; label?: string; noteId?: string; images?: ChatImagePayload[] }): Promise<void>;
   chatRetry(key: string): Promise<void>;
   chatStop(key: string): Promise<void>;
   chatReset(key: string): Promise<void>;
@@ -177,6 +191,8 @@ export interface SpreadNative {
   onChatUpdate(cb: (u: ChatState) => void): () => void;
   pathForFile(file: File): string;
   onOpenPath(cb: (path: string) => void): () => void;
+  /** Edit menu items (macOS): undo, redo and select all, routed to whatever has focus. */
+  onEditCommand?(cb: (cmd: 'undo' | 'redo' | 'selectAll') => void): () => void;
   onAutomationRequest(cb: (req: AutomationRequest) => void): () => void;
   respondAutomation(resp: AutomationResponse): void;
 }

@@ -1,6 +1,6 @@
 /* The Claude side panel: the fourth column of .app when open (see .app.with-chat in styles.css). */
 .panel.chat { position: relative; border-left: 1px solid var(--border); }
-.panel.chat.drop-hover::after { content: 'Drop files to share them with Claude'; position: absolute; inset: 8px; border: 2px dashed var(--accent); border-radius: var(--radius-lg); display: grid; place-items: center; color: var(--accent-text); font-weight: 600; background: var(--accent-faint); pointer-events: none; z-index: 5; }
+.panel.chat.drop-hover::after { content: 'Drop pictures or files to share them with Claude'; position: absolute; inset: 8px; border: 2px dashed var(--accent); border-radius: var(--radius-lg); display: grid; place-items: center; color: var(--accent-text); font-weight: 600; background: var(--accent-faint); pointer-events: none; z-index: 5; }
 
 .chat-resize { position: absolute; left: -3px; top: 0; bottom: 0; width: 6px; cursor: ew-resize; z-index: 6; }
 .chat-resize:hover, body.is-resizing-chat .chat-resize { background: var(--accent); opacity: .5; }
@@ -80,6 +80,15 @@ body.is-resizing-chat, body.is-resizing-chat * { cursor: ew-resize !important; u
 .chat-file { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; background: var(--panel-2); border-radius: var(--radius); padding: 2px 2px 2px 6px; max-width: 100%; }
 .chat-file button { display: grid; place-items: center; width: 16px; height: 16px; border: none; border-radius: 4px; background: transparent; color: var(--muted); padding: 0; }
 .chat-file button:hover { background: var(--hover); color: var(--text); }
+
+/* Pictures: waiting in the composer (with a remove button), and sent, above the message. */
+.chat-pics { display: flex; gap: 6px; flex-wrap: wrap; min-width: 0; }
+.chat-pics.sent { justify-content: flex-end; max-width: 88%; }
+.chat-pic { display: grid; place-items: center; width: 56px; height: 56px; object-fit: cover; border-radius: var(--radius); border: 1px solid var(--border); background: var(--panel-2); color: var(--muted); user-select: none; }
+.chat-pics.sent .chat-pic { width: 72px; height: 72px; }
+.chat-pic-wrap { position: relative; display: block; }
+.chat-pic-wrap button { position: absolute; top: -6px; right: -6px; display: grid; place-items: center; width: 18px; height: 18px; padding: 0; border: 1px solid var(--border-strong); border-radius: 50%; background: var(--panel); color: var(--text); }
+.chat-pic-wrap button:hover { background: var(--hover); }
 
 .chat-box { border: 1px solid var(--border-strong); border-radius: var(--radius-lg); background: var(--bg); padding: 8px 8px 4px 12px; display: flex; flex-direction: column; gap: 4px; transition: border-color var(--t) var(--ease); }
 .chat-box:focus-within { border-color: var(--accent); }
