@@ -55,6 +55,8 @@ async function read() {
     if (!known.has(file) && !hidden.has(file)) index.projects.push({ path: file, folderId: null, openedAt: 0 });
   }
   for (const p of index.projects) {
+    // A short id that stays with the record through renames, so Claude can name a project exactly.
+    if (!p.id) p.id = hash(p.path).slice(0, 8);
     try {
       const st = await fs.promises.stat(p.path);
       p.updatedAt = st.mtimeMs;

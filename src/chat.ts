@@ -7,6 +7,7 @@ import { useLibrary } from './library';
 import { absoluteBoxes } from './render';
 import { currentLayout, useStore } from './store';
 import { patchComment, pinLabel, pinnedNode, pinPoint, reconcileNotes } from './comments';
+import { claudeChatIn, steerClaude, useWorkspace } from './workspace';
 import type { CanvasComment, SceneNode } from './types';
 
 // The Claude side panel's renderer half: which conversation belongs to the open project, and the
@@ -31,40 +32,60 @@ export const chatCwd = () => {
 /** Notes on their way to the chat, which can't know about them yet. */
 const sending = new Set<string>();
 
-/** Pins follow the conversation that belongs to the open project. */
+/**
+ * The conversation the panel shows: the open project's own, unless a Claude from another project's
+ * chat moved itself here (open_project, new_project), in which case the panel stays with that
+ * Claude so its turn doesn't vanish mid-way.
+ */
+const panelKeyFor = (filePath: string | null) => claudeChatIn(filePath) ?? chatKey(filePath);
+let panelKey = chatKey(null);
+
+/** Pins follow the conversation the panel shows. */
 function syncPins() {
   const state = useChat.getState().state;
-  if (state && state.key === chatKey(useStore.getState().filePath)) reconcileNotes(state.notes ?? {}, sending);
+  if (state && state.key === panelKey) reconcileNotes(state.notes ?? {}, sending);
 }
 
 export function installChat() {
   if (!native) return () => {};
   const n = native;
-  let key = chatKey(useStore.getState().filePath);
+  panelKey = panelKeyFor(useStore.getState().filePath);
   const offPins = useChat.subscribe(syncPins);
-  const load = () => n.chatOpen(key).then((state) => useChat.setState({ state }));
+  const load = () => n.chatOpen(panelKey).then((state) => useChat.setState({ state }));
   void load();
   const offUpdate = n.onChatUpdate((u) => {
-    if (u.key === key) useChat.setState({ state: u });
+    if (u.key === panelKey) useChat.setState({ state: u });
   });
+  const follow = () => {
+    const next = panelKeyFor(useStore.getState().filePath);
+    if (next === panelKey) return;
+    panelKey = next;
+    void load();
+  };
   const offStore = useStore.subscribe((s, prev) => {
     if (s.comments !== prev.comments) syncPins();
     if (s.filePath === prev.filePath) return;
-    const next = chatKey(s.filePath);
     // Saving an unsaved project keeps its conversation; opening another project switches to that one.
     const saved = prev.filePath === null && !!s.filePath && s.project.boards[0]?.id === prev.project.boards[0]?.id;
-    if (saved && key === UNSAVED) void n.chatRename({ from: UNSAVED, to: next });
-    key = next;
-    void load();
+    if (saved && panelKey === UNSAVED) void n.chatRename({ from: UNSAVED, to: chatKey(s.filePath) });
+    follow();
   });
+  const offClaude = useWorkspace.subscribe((w, prev) => void (w.claude !== prev.claude && follow()));
   return () => {
     offPins();
     offUpdate();
     offStore();
+    offClaude();
   };
 }
 
-export const currentChatKey = () => chatKey(useStore.getState().filePath);
+export const currentChatKey = () => panelKey;
+
+/** A new message: this conversation's Claude works in the project the user is looking at. */
+function aimClaude() {
+  const fp = useStore.getState().filePath;
+  if (fp) steerClaude(panelKey, fp);
+}
 
 /** Row letter by position: A, B, … (matches the board header chips). */
 export const rowLetter = (i: number): string => (i < 26 ? String.fromCharCode(65 + i) : rowLetter(Math.floor(i / 26) - 1) + String.fromCharCode(65 + (i % 26)));
@@ -191,6 +212,7 @@ export async function sendChat(text: string, files: string[] = []) {
   const chips = contextChips();
   const label = [chips.row, chips.selection, chips.photos, ...files.map((f) => f.split(/[\\/]/).pop())].filter(Boolean).join(' · ');
   const content = `${await buildContext(files)}\n\n${text}`;
+  aimClaude();
   await native.chatSend({ key: currentChatKey(), cwd: chatCwd(), text, content, label });
 }
 
@@ -205,6 +227,7 @@ export async function sendNote(id: string) {
   patchComment(id, { status: 'waiting' }, false);
   try {
     const content = `${await buildContext([], c)}\n\n${c.text}`;
+    aimClaude();
     await native.chatSend({ key: currentChatKey(), cwd: chatCwd(), text: c.text, content, label, noteId: id });
     sending.delete(id);
     syncPins();

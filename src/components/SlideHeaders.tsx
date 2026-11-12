@@ -168,7 +168,13 @@ function BoardChrome({
     { label: 'Zoom to row', kbd: 'Shift+3', fn: zoomTo },
     ...(board.kind === 'carousel' ? [{ label: 'Preview', fn: () => (activate(), s().set({ modal: 'preview' })) }] : []),
     { label: 'Duplicate as variation', kbd: `${MOD}+Alt+D`, fn: () => s().duplicateBoard(board.id) },
-    ...(isElectron ? [{ label: 'Copy to another project…', fn: () => openSwitcher(board.id) }] : []),
+    ...(isElectron
+      ? [
+          // The only row can't leave: a project always keeps one.
+          { label: 'Move to project…', fn: () => openSwitcher({ boardId: board.id, move: true }), disabled: count < 2 },
+          { label: 'Copy to project…', fn: () => openSwitcher({ boardId: board.id, move: false }) },
+        ]
+      : []),
     null,
     { label: 'Rename', fn: () => setEditing('name') },
     { label: board.note ? 'Edit note' : 'Add note', fn: () => setEditing('note') },

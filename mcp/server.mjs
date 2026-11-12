@@ -184,6 +184,7 @@ const server = new McpServer(
     instructions: `Spread is the user's local design canvas (a Figma replacement): carousels, emails, and pages of any size (resumes, posters, slides, banners). These tools drive the running desktop app live — the user sees every change on their canvas and can tweak by hand afterwards. You design and iterate; the user directs and makes the final call.
 STYLES: a project can have named text styles and spacing tokens (get_state lists them as styles). When it does, set textStyle on text and space on auto layout frames instead of raw values, and to change a type or spacing decision change the style once with spread_save_styles rather than editing layers.
 BRAND: every project uses one brand kit or none (get_state/get_feedback report it). With a brand, call spread_get_brand and design with only its fonts, colors, type scale, spacing and rules; spread_lint flags anything off-brand. With none (a personal project), use no brand's assets. Never switch a project's brand unless the user asks.
+PROJECTS: board tools act on ONE project, the open one; get_state, list_boards and get_feedback name it in project. When the user means a different project, spread_list_projects (ids, names, which is active) → spread_open_project {project: id or name} BEFORE building; it waits until that project is loaded and returns it, and your later calls stay there. To put a row in another project, use spread_move_board (or copy: true) rather than rebuilding it by hand.
 FEWER CALLS: chain steps with spread_batch (e.g. update_nodes → lint → render_slides in one call). Each call may cost the user a permission click.
 NEW WORK: act as the user's senior designer and marketing lead. Call spread_guide('director') first and run its brief: one round of questions with options (how many directions, which territory), a strategy line, and direction concepts the user approves before you build. Skip the questions only when the brief is already complete or the user says "just make it".
 BEFORE DESIGNING ANYTHING, call spread_guide with the medium (document = any page-based work, carousel, eblast) and follow it: it is the workflow and the quality bar (setup, the lint Floor, the Bar, directions, export). If a guide is already loaded as a skill, you don't need to call it.
@@ -991,7 +992,8 @@ tool(
   'spread_list_projects',
   {
     title: 'List projects',
-    description: 'Lists every project on the Home page: name, path, kinds, board count, folder and last change. Use it to find past work to open or borrow ideas from.',
+    description:
+      "Lists every project on the Home page: { activeProject: { id, name, path } (the one your board tools act on), projects: [{ id, name, path, active, open (in a tab), kinds, boards, folder, updatedAt }] }. Use it to find the project the user means before switching with spread_open_project, or to find past work to borrow from. Read-only.",
     inputSchema: {},
   },
   passthrough('list_projects'),
@@ -1001,11 +1003,33 @@ tool(
   'spread_open_project',
   {
     title: 'Open project',
-    description: 'Opens a .spread project file (absolute path) in its own tab. Other open projects stay as they are, and they save themselves.',
-    inputSchema: { path: z.string() },
+    description:
+      "Switches Spread to a project, in its own tab, and waits until it has loaded: every later call (get_state, create_board, create_from_template, add_nodes…) acts on it until you open another. project = an id or name from spread_list_projects (a name matches whole, else in part; several matches is an error that lists them) or an absolute .spread path. Other open projects stay as they are and save themselves. Returns { project: { id, name, path }, activeBoardId, boards, brand }: check project before building.",
+    inputSchema: {
+      project: z.string().optional().describe('Project id, name or absolute .spread path (from spread_list_projects)'),
+      path: z.string().optional().describe('Older name for project: an absolute .spread path'),
+    },
     annotations: { destructiveHint: true },
   },
   passthrough('open_project', 300_000),
+);
+
+tool(
+  'spread_move_board',
+  {
+    title: 'Move a row to another project',
+    description:
+      "Moves a row (board) to another project as its bottom row, or copies it with copy: true. Everything goes with it: layers, slides, settings, email subject and preheader, note, status, the photos and uploaded fonts it uses (they join that project's photo tray; a photo it already has is reused) and the text styles and spacing tokens it follows. Board and layer ids stay the same unless that project already has the board id (then board.id in the result is the new one). Works whether the other project is open in a tab, closed, or new (newProject: 'Name' starts one with this row). A move takes the row out of this project as one undoable step; the only row in a project can't move (copy it). If the brands differ the result says so in brand: nothing is restyled, so ask the user before changing it. activate: true then switches to that project with the row active; otherwise you stay in this project. Returns { moved, board: { id, name, idChanged }, from, to: { id, name, path, was }, photos: { added, reused }, brand?, activated, activeProject, hint }.",
+    inputSchema: {
+      boardId: z.string().optional().describe('Row to move (default: the active row)'),
+      toProject: z.string().optional().describe('Destination: a project id, name or absolute .spread path from spread_list_projects'),
+      newProject: z.string().optional().describe('Instead of toProject: start a new project with this name, holding just this row'),
+      copy: z.boolean().optional().describe('Copy the row and leave it here too (default false: move)'),
+      activate: z.boolean().optional().describe('Switch to the destination project afterwards, with the row active (default false)'),
+    },
+    annotations: { destructiveHint: true },
+  },
+  passthrough('move_board', 300_000),
 );
 
 tool(
@@ -1013,7 +1037,7 @@ tool(
   {
     title: 'New project',
     description:
-      'Starts a blank project in a new tab (one carousel board of 3 portrait slides, empty tray). Other open projects stay as they are.',
+      'Starts a blank project in a new tab (one carousel board of 3 portrait slides, empty tray) and switches to it: later calls act on it until you open another. Other open projects stay as they are. Returns { project: { id, name, path }, activeBoardId, boards, brand }.',
     inputSchema: {
       name: z.string().optional().describe('Project name (used for export file names)'),
       discard: z.boolean().optional().describe('Discard unsaved changes in the open project'),
