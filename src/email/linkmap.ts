@@ -2,7 +2,7 @@ import type { LayoutMap } from '../layout';
 import { LINK_ISSUE_TEXT, linkIssue, nodeLink, type LinkIssue } from '../links';
 import type { Doc, FrameNode, PictureHosting, SceneNode, TextNode } from '../types';
 import { collectEmailImages, parseNameTags, type EmailImage } from './html';
-import { pictureUrlProblem, type WordPress } from './hosting';
+import { imageUrlProblem, pictureUrlProblem, type WordPress } from './hosting';
 
 // Everything on an email that has to point somewhere: click links on layers, and the pictures
 // whose files have to live on a public URL. One list feeds the Links panel, the pills on the
@@ -21,7 +21,7 @@ export interface PictureEntry {
   assetId: string | null;
   status: PictureStatus;
   text: string;
-  /** mode 'each': the URL typed for it. */
+  /** The picture's own web address, when it has one (or, in "URL per picture", the one typed so far). */
   url?: string;
 }
 
@@ -79,8 +79,13 @@ function labelOf(n: SceneNode) {
 const sectionName = (n: SceneNode) => parseNameTags(n.name).clean.replace(/^section\s*\/\s*/i, '').trim() || 'Section';
 const shortUrl = (u: string) => u.replace(/^https?:\/\/(www\.)?/, '');
 
-function pictureState(im: EmailImage, assetId: string | null, h: PictureHosting, wp: WordPress | undefined): PictureEntry {
+function pictureState(im: EmailImage, assetId: string | null, h: PictureHosting, wp: WordPress | undefined, own: string): PictureEntry {
   const base = { nodeId: im.nodeId, fileName: im.fileName, assetId };
+  // The picture's own web address wins over the board's hosting.
+  if (own) {
+    const p = imageUrlProblem(own);
+    return p ? { ...base, url: own, status: 'fix', text: p } : { ...base, url: own, status: 'ok', text: shortUrl(own) };
+  }
   if (h.mode === 'wordpress') {
     if (wp === undefined) return { ...base, status: 'ok', text: 'Checking WordPress…' };
     if (!wp) return { ...base, status: 'wait', text: 'Uploads once WordPress is connected' };
@@ -89,10 +94,10 @@ function pictureState(im: EmailImage, assetId: string | null, h: PictureHosting,
   if (h.mode === 'base') {
     const b = h.baseUrl?.trim() ?? '';
     if (!b || pictureUrlProblem(b)) return { ...base, status: 'wait', text: 'Waiting on the pictures folder URL' };
-    return { ...base, status: 'ok', text: `${im.fileName} in your folder` };
+    return { ...base, status: 'ok', text: 'Goes in your pictures folder' };
   }
   const url = h.urls?.[im.nodeId]?.trim() ?? '';
-  if (!url) return { ...base, url, status: 'fix', text: 'No picture URL yet' };
+  if (!url) return { ...base, url, status: 'fix', text: 'No web address yet' };
   const p = pictureUrlProblem(url);
   return p ? { ...base, url, status: 'fix', text: p } : { ...base, url, status: 'ok', text: shortUrl(url) };
 }
@@ -146,7 +151,7 @@ export function linkItems(doc: Doc, root: FrameNode, layout: LayoutMap, hosting:
     }
     const im = pics.get(n.id);
     if (im) {
-      const entry = pictureState(im, n.type === 'image' ? n.assetId : null, hosting, wp);
+      const entry = pictureState(im, n.type === 'image' ? n.assetId : null, hosting, wp, doc.email?.imageUrls?.[n.id]?.trim() ?? '');
       const host = owner ? byId.get(owner) : undefined;
       if (host) host.pictures.push(entry);
       else add(n, section, null).pictures.push(entry);

@@ -1,8 +1,10 @@
 import { normaliseSpans, remapSpans, resolveSpanInput } from './richtext';
 import { emailHandlers } from './email/automation';
 import { emailRootOf } from './email/boards';
-import { boardHosting, hostingStatus } from './email/hosting';
+import { boardHosting, hostingStatus, imageUrlProblem } from './email/hosting';
 import { linkItems } from './email/linkmap';
+import { collectEmailImages } from './email/html';
+import { getLayout } from './layout';
 import { createFromTemplate, libraryForClaude, saveReference, saveTemplate } from './library';
 import { useStore, currentLayout, boardFrames, asClaude, fitVariations, type BoardEditLog } from './store';
 import { collectLinks, nodeLink, setNodeLink, withTracking } from './links';
@@ -246,7 +248,7 @@ function summary(detail: 'full' | 'outline' = 'full') {
     slideHeight: d.slideHeight,
     slideCount: d.slides.length,
     background: d.background,
-    ...(d.kind === 'email' ? { email: { subject: d.email?.subject ?? null, preheader: d.email?.preheader ?? null } } : {}),
+    ...(d.kind === 'email' ? { email: { subject: d.email?.subject ?? null, preheader: d.email?.preheader ?? null, platform: d.email?.platform ?? null } } : {}),
     ...(d.overlay ? { overlay: { name: d.overlay.name, mode: d.overlay.mode, visible: d.overlay.visible } } : {}),
     slides: d.slides.map((sl, index) => ({ index, background: sl.background ?? d.background })),
     ...(d.page ? { page: d.page, units: d.page.units } : {}),
@@ -433,6 +435,22 @@ function handEditsOf(b: Doc, log: BoardEditLog | undefined): string[] {
     .slice(-60);
 }
 
+/** A board's picture web addresses with `changes` applied ('' or null clears one). Checks every id and address. */
+function mergeImageUrls(b: Doc, changes: Record<string, string | null>) {
+  const root = emailRootOf(b);
+  const pictures = new Set(root ? collectEmailImages(root, getLayout(b.nodes, useStore.getState().fontsVersion)).map((im) => im.nodeId) : []);
+  const next = { ...b.email?.imageUrls };
+  for (const [nodeId, url] of Object.entries(changes)) {
+    if (!pictures.has(nodeId)) throw new Error(`imageUrls: "${nodeId}" isn't a picture in this email. Picture ids: ${[...pictures].join(', ') || 'none'}.`);
+    const u = url?.trim() ?? '';
+    const problem = u ? imageUrlProblem(u) : null;
+    if (problem) throw new Error(`imageUrls["${nodeId}"] "${u}": ${problem}`);
+    if (u) next[nodeId] = u;
+    else delete next[nodeId];
+  }
+  return Object.keys(next).length ? next : undefined;
+}
+
 const handlers: Record<string, (p: Params) => Promise<unknown> | unknown> = {
   get_state: (p) => summary(p.detail === 'outline' ? 'outline' : 'full'),
 
@@ -448,6 +466,7 @@ const handlers: Record<string, (p: Params) => Promise<unknown> | unknown> = {
       links,
       needAttention: links.filter((l) => l.issue).length,
       pictureHosting: root ? hosting : undefined,
+      imageUrls: root ? d.email?.imageUrls ?? {} : undefined,
       items: items.map(({ id, section, name, link, suggested, fix, status, pictures }) => ({ id, section, name, link, suggested, fix, status, pictures: pictures.map(({ assetId: _a, ...p }) => p) })),
       toFix: items.filter((i) => i.fix).length,
     };
@@ -578,10 +597,12 @@ const handlers: Record<string, (p: Params) => Promise<unknown> | unknown> = {
       if (p.status === null) patch.statusReason = null;
     }
     if (typeof p.statusReason === 'string' || p.statusReason === null) patch.statusReason = p.statusReason;
-    if (typeof p.subject === 'string' || typeof p.preheader === 'string' || typeof p.tracking === 'string') {
+    if (typeof p.subject === 'string' || typeof p.preheader === 'string' || typeof p.tracking === 'string' || p.imageUrls || p.platform !== undefined) {
       const b = useStore.getState().project.boards.find((x) => x.id === id)!;
-      if (b.kind !== 'email') throw new Error('subject, preheader and tracking are for email boards.');
+      if (b.kind !== 'email') throw new Error('subject, preheader, tracking, imageUrls and platform are for email boards.');
       patch.email = { ...b.email, ...(typeof p.subject === 'string' ? { subject: p.subject } : {}), ...(typeof p.preheader === 'string' ? { preheader: p.preheader } : {}), ...(typeof p.tracking === 'string' ? { tracking: p.tracking } : {}) };
+      if (p.platform !== undefined) patch.email.platform = p.platform === 'rentcafe' || p.platform === 'other' ? p.platform : undefined;
+      if (p.imageUrls) patch.email.imageUrls = mergeImageUrls(b, p.imageUrls);
     }
     useStore.getState().updateBoard(id, patch);
     return { boards: boardsSummary() };

@@ -310,7 +310,16 @@ export interface EmailMeta {
   hosting?: PictureHosting;
   /** Layers that look like buttons but are meant to go nowhere (the "needs a link" hint is dismissed). */
   noLink?: string[];
+  /**
+   * A picture's own web address by layer id (absolute https URL). Wins over every hosting mode;
+   * such pictures aren't rendered, uploaded or written to the export folder.
+   */
+  imageUrls?: Record<string, string>;
+  /** The tool that sends this email. 'rentcafe' adds the unsubscribe link and mailing address itself. */
+  platform?: EmailPlatform;
 }
+
+export type EmailPlatform = 'rentcafe' | 'other';
 
 /** wordpress: Spread uploads them. base: one folder URL + the exported file names. each: a URL per picture. */
 export type PictureHostMode = 'wordpress' | 'base' | 'each';
@@ -318,7 +327,7 @@ export type PictureHostMode = 'wordpress' | 'base' | 'each';
 export interface PictureHosting {
   mode: PictureHostMode;
   baseUrl?: string;
-  /** mode 'each': picture URL by layer id. */
+  /** Older boards, mode 'each': picture URL by layer id. New addresses go in EmailMeta.imageUrls. */
   urls?: Record<string, string>;
 }
 
