@@ -124,6 +124,37 @@ async function variableWeightRange(data: ArrayBuffer): Promise<[number, number] 
   }
 }
 
+const NAMED_WEIGHTS: [RegExp, number][] = [
+  [/\b(hairline|thin)\b/i, 100],
+  [/\b(extra|ultra)\s*light\b/i, 200],
+  [/\b(semi|demi)\s*bold\b/i, 600],
+  [/\b(extra|ultra)\s*bold\b/i, 800],
+  [/\b(black|heavy)\b/i, 900],
+  [/\blight\b/i, 300],
+  [/\bmedium\b/i, 500],
+  [/\bbold\b/i, 700],
+  [/\b(regular|normal|book|roman)\b/i, 400],
+];
+
+/** The weight a single-weight font file's family name says it is ("Roboto Bold" → 700), if any. */
+export function weightInName(family: string): number | null {
+  const name = family.replace(/([a-z])([A-Z])/g, '$1 $2');
+  return NAMED_WEIGHTS.find(([re]) => re.test(name))?.[1] ?? null;
+}
+
+/**
+ * The CSS font-weight descriptors an uploaded font is registered under, one face per entry.
+ * A variable font gets its range. A single-weight font gets 400 plus the weight its name gives
+ * ("Roboto Bold" → 400 and 700): at 700 the browser draws the real bold instead of thickening it a
+ * second time, and designs saved with that font at 400 keep drawing the same file as before.
+ */
+export function fontFaceWeights(family: string): string[] {
+  const range = fontRanges.get(family);
+  if (range) return [`${range[0]} ${range[1]}`];
+  const named = weightInName(family);
+  return named && named !== 400 ? ['400', String(named)] : ['400'];
+}
+
 /** Registers a font file under a CSS family name derived from the file name. */
 export async function registerFont(blob: Blob, name: string, id = uid(), family?: string): Promise<AssetMeta> {
   const fam = family ?? name.replace(FONT_EXT, '').replace(/[-_]+/g, ' ').trim();
@@ -131,9 +162,11 @@ export async function registerFont(blob: Blob, name: string, id = uid(), family?
   const range = await variableWeightRange(data);
   if (range) fontRanges.set(fam, range);
   // Without a declared range the browser treats a variable font as one weight and never moves its axis.
-  const face = new FontFace(fam, data, range ? { weight: `${range[0]} ${range[1]}` } : undefined);
-  await face.load();
-  document.fonts.add(face);
+  for (const weight of fontFaceWeights(fam)) {
+    const face = new FontFace(fam, data.slice(0), { weight });
+    await face.load();
+    document.fonts.add(face);
+  }
   const meta: AssetMeta = { id, name, kind: 'font', mime: blob.type || guessMime(name), width: 0, height: 0, family: fam };
   registry.set(id, { meta, blob });
   return meta;

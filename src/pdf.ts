@@ -1,5 +1,5 @@
 import { useStore } from './store';
-import { getAsset, loadFull, allAssets } from './assets';
+import { getAsset, loadFull, allAssets, fontFaceWeights } from './assets';
 import { getLayout, letterSpacingPx, textLines, type LayoutMap } from './layout';
 import { baseStyle, hasSpans, richLines, runCss } from './richtext';
 import { absoluteBoxes, cropGeometry, filterString } from './render';
@@ -245,7 +245,9 @@ export async function fontFaceCss(families: Set<string>): Promise<string> {
   }
   for (const r of allAssets()) {
     if (r.meta.kind === 'font' && r.meta.family && families.has(r.meta.family)) {
-      out.push(`@font-face{font-family:"${r.meta.family}";src:url(${await blobToDataUrl(r.blob)});}`);
+      // Same faces the canvas registers (see fontFaceWeights), so 700 text in "Roboto Bold" prints the real bold.
+      const src = await blobToDataUrl(r.blob);
+      for (const w of fontFaceWeights(r.meta.family)) out.push(`@font-face{font-family:"${r.meta.family}";font-weight:${w};src:url(${src});}`);
     }
   }
   return out.join('\n');

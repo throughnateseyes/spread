@@ -14,7 +14,9 @@ import '@fontsource/dm-serif-display/400-italic.css';
 import '@fontsource/instrument-serif/400.css';
 import '@fontsource/instrument-serif/400-italic.css';
 import '@fontsource/bebas-neue/400.css';
-import { fontWeightRange } from './assets';
+import { fontWeightRange, weightInName } from './assets';
+
+export { weightInName };
 import { useStore } from './store';
 import { findNode, walk } from './tree';
 import { withoutSpanProp } from './richtext';
@@ -107,24 +109,6 @@ export function fontWeights(family: string, doc: Doc): number[] | null {
   // name usually says ("Roboto Bold" is the 700, not a 400 with no bold).
   if (uploadedFonts(doc).some((f) => f.family === family)) return [weightInName(family) ?? 400];
   return null;
-}
-
-const NAMED_WEIGHTS: [RegExp, number][] = [
-  [/\b(hairline|thin)\b/i, 100],
-  [/\b(extra|ultra)\s*light\b/i, 200],
-  [/\b(semi|demi)\s*bold\b/i, 600],
-  [/\b(extra|ultra)\s*bold\b/i, 800],
-  [/\b(black|heavy)\b/i, 900],
-  [/\blight\b/i, 300],
-  [/\bmedium\b/i, 500],
-  [/\bbold\b/i, 700],
-  [/\b(regular|normal|book|roman)\b/i, 400],
-];
-
-/** The weight a single-weight font file's family name says it is ("Roboto Bold" → 700), if any. */
-export function weightInName(family: string): number | null {
-  const name = family.replace(/([a-z])([A-Z])/g, '$1 $2');
-  return NAMED_WEIGHTS.find(([re]) => re.test(name))?.[1] ?? null;
 }
 
 /** The available weight closest to `w` (ties go heavier). */
