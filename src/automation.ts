@@ -1,5 +1,6 @@
 import { normaliseSpans, remapSpans, resolveSpanInput } from './richtext';
 import { emailHandlers } from './email/automation';
+import { listingHandlers } from './email/listingcards';
 import { emailRootOf } from './email/boards';
 import { emailTextDefaults } from './email/templates';
 import { boardHosting, hostingStatus, imageUrlProblem } from './email/hosting';
@@ -1184,6 +1185,9 @@ const handlers: Record<string, (p: Params, caller?: string | null) => Promise<un
 
 // Email-board methods live with the email engine.
 Object.assign(handlers, emailHandlers);
+
+// Listing cards filled from listing links (src/email/listingcards.ts).
+Object.assign(handlers, listingHandlers);
 
 /**
  * Runs one automation method exactly as the bridge does (focus restore, Claude attribution) and
