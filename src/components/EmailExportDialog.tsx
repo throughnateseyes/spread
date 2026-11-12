@@ -16,6 +16,7 @@ import { InboxChecks, InboxStage, useInboxPreview } from './InboxPreview';
 import { HostingField, openLinkItem, revealLinkItem, useHostingIssue, useLinkItems } from './LinkEditor';
 import { goToCheck } from './SendChecklist';
 import { blobToDataUrl } from '../pdf';
+import EmailPdfButton from './EmailPdfButton';
 
 // Email export. Step one is short on purpose: how the send check stands, anything still to fix
 // (fixed on the canvas, not here), where the pictures live, and the HTML size. Subject, preview
@@ -287,6 +288,7 @@ export default function EmailExportDialog({ onClose, root }: Props) {
           <span className="muted">
             {root.w}×{Math.round(height)} · {formatKb(compiled.bytes)}
           </span>
+          <EmailPdfButton />
           <Button onClick={onClose}>Cancel</Button>
           <Button primary onClick={goReview} disabled={!!busy}>
             Preview &amp; export

@@ -1010,7 +1010,9 @@ const handlers: Record<string, (p: Params) => Promise<unknown> | unknown> = {
 
   async export_pdf(p) {
     const s = useStore.getState();
-    const { bytes, pages, name } = await exportPdf(s.doc.id);
+    if (p.pages !== undefined && p.pages !== 'one' && p.pages !== 'letter') throw new Error(`pages is 'one' or 'letter', not "${String(p.pages)}".`);
+    if (p.pages === 'letter' && s.doc.kind !== 'email') throw new Error(`pages: 'letter' is for email boards. A ${s.doc.kind} board prints its own pages.`);
+    const { bytes, pages, name } = await exportPdf(s.doc.id, { pages: p.pages });
     const path: string = p.path ?? `${defaultDir()}/${safeFileName(name)}-${today()}.pdf`;
     await writeToPath(path, bytes);
     s.toast(`Saved ${pages}-page PDF`, 'success');

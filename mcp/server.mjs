@@ -1061,8 +1061,12 @@ tool(
   'spread_export_pdf',
   {
     title: 'Export PDF',
-    description: `Exports a board (active, or boardId) as a PDF with real, selectable text and embedded fonts: one page per page/slide, page size = slide size in points. Photos are embedded at 300 dpi. Line breaks match the canvas exactly. path = absolute .pdf path (default: ~/Pictures/Spread/<name>-<date>.pdf). Returns { path, pages, bytes }. Follow with spread_pdf_text to check what an applicant-tracking system or screen reader will read.`,
-    inputSchema: { boardId, path: z.string().optional().describe('Absolute output path ending in .pdf') },
+    description: `Exports a board (active, or boardId) as a PDF with real, selectable text and embedded fonts: one page per page/slide, page size = slide size in points. Emails work too: by default one continuous page the size of the email (600px wide prints 600pt wide, height grows with it), or pages: 'letter' to split it across US Letter pages (fitted to the width, breaks kept out of text lines and, where it costs little, pictures and sections). Linked layers stay clickable (email tracking tags included). Photos are embedded at 300 dpi with their crops and effects. Line breaks match the canvas exactly. path = absolute .pdf path (default: ~/Pictures/Spread/<name>-<date>.pdf). Returns { path, pages, bytes }. Follow with spread_pdf_text to check what an applicant-tracking system or screen reader will read.`,
+    inputSchema: {
+      boardId,
+      path: z.string().optional().describe('Absolute output path ending in .pdf'),
+      pages: z.enum(['one', 'letter']).optional().describe("Email boards only: 'one' = one long page the size of the email (default), 'letter' = US Letter pages"),
+    },
   },
   passthrough('export_pdf', 180_000),
 );

@@ -56,6 +56,7 @@ Every project uses one brand kit or none, and the user switches it in the top ba
 9. **Export with hosting.** `spread_export_email { boardId, host: 'wordpress' }` renders the images, uploads them to the user's WordPress media library (pictures that haven't changed are reused, so iterating is cheap) and writes `email.html` with the hosted URLs into a dated folder under `~/Pictures/Spread`. Subject and preview text come from the board.
 10. **If WordPress isn't connected,** the export says so. Ask the user to connect it once (Export → Upload to WordPress: site, username, an Application Password from Users → Profile). Without it, export without `host`, have them upload the image files to a public host (not Drive or Box), ask for the base URL, and export again with `baseUrl` (or `urls: { nodeId: url }`).
 11. Check `warnings` once more. The user can also do all of this themselves in Export → Upload & copy HTML.
+12. **Need a PDF too** (to print, attach, or send for approval)? `spread_export_pdf { boardId }` writes the email as one long page with real text and clickable links; `pages: 'letter'` splits it across US Letter pages without cutting through a line. The user can do the same from Export → Save as PDF.
 
 ## Delivering
 

@@ -91,6 +91,7 @@ export default function App() {
       {homeOpen && <Home />}
       {isElectron && <Switcher />}
       {modal === 'export' && (emailRoot ? <EmailExportDialog onClose={close} root={emailRoot} nodes={doc.nodes} /> : doc.kind === 'document' ? <PdfExportDialog /> : <ExportDialog />)}
+      {modal === 'pdf' && <PdfExportDialog />}
       {modal === 'new-board' && <NewBoardDialog />}
       {modal === 'claude' && <ClaudeDialog />}
       {modal === 'brands' && <BrandsDialog />}
